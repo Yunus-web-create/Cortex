@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex — offline demo</title>
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#fff; --panel-2:#fbfaf7; --panel-3:#f2f0ec;
+  --ink:#1b1a18; --ink-2:#3f3c38; --muted:#726d66; --faint:#9b958d;
+  --line:#e7e3dc; --line-strong:#d8d2c9;
+  --accent:#5a48e0; --accent-2:#7c6cff; --accent-soft:#efecfe; --accent-line:#ded8fd;
+  --ok:#0f7a5f; --ok-soft:#e6f5f0; --devel:#a55a09; --warn-soft:#fdf1e0;
+  --shadow-md:0 1px 3px rgba(28,24,18,.06),0 10px 26px -14px rgba(28,24,18,.22);
+  --shadow-lg:0 2px 6px rgba(28,24,18,.06),0 24px 60px -22px rgba(28,24,18,.30);
+  --font:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+[data-theme=dark]{
+  --bg:#121211; --panel:#1a1917; --panel-2:#1f1e1b; --panel-3:#262420;
+  --ink:#efece6; --ink-2:#d4cfc6; --muted:#a49e94; --faint:#847e74;
+  --line:#2d2b27; --line-strong:#3b3833;
+  --accent:#9a8bff; --accent-2:#b3a7ff; --accent-soft:#241f3f; --accent-line:#38305f;
+  --ok:#4ed3a8; --ok-soft:#16302a; --devel:#f0b264; --warn-soft:#332614;
+}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+header{display:flex;align-items:center;gap:11px;padding:14px 20px;border-bottom:1px solid var(--line);flex:none}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(160deg,var(--accent-2),var(--accent));
+  display:grid;place-items:center;box-shadow:0 5px 14px -6px rgba(90,72,224,.7)}
+.logo svg{stroke:#fff;width:17px;height:17px}
+.brand{line-height:1.15}
+.brand strong{font-size:15.5px;letter-spacing:-.02em;display:block}
+.brand span{font-size:10.5px;color:var(--muted)}
+.spacer{flex:1}
+.pill{font-size:10.5px;font-weight:650;padding:3px 9px;border-radius:99px;background:var(--warn-soft);
+  color:var(--devel);border:1px solid color-mix(in srgb,var(--devel) 26%,transparent);white-space:nowrap}
+.iconbtn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{color:var(--ink);border-color:var(--line-strong)}
+main{flex:1;overflow-y:auto;padding:22px 20px 8px}
+.wrap{max-width:760px;margin:0 auto}
+.hero{text-align:center;padding:26px 0 8px}
+.orb{width:56px;height:56px;border-radius:18px;margin:0 auto 18px;background:conic-gradient(from 210deg,var(--accent),#33c6b0,#f0a23c,var(--accent));
+  box-shadow:0 16px 40px -16px rgba(90,72,224,.7);position:relative}
+.orb::after{content:"";position:absolute;inset:31%;border-radius:50%;background:var(--bg)}
+.eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);font-weight:640;margin:0 0 9px}
+h1{font-size:clamp(24px,3.4vw,31px);letter-spacing:-.035em;margin:0 0 9px;font-weight:660;line-height:1.13}
+.sub{color:var(--muted);font-size:14px;line-height:1.6;max-width:430px;margin:0 auto}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:26px;text-align:left}
+.card{text-align:left;cursor:pointer;padding:13px 15px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);font-size:13.2px;line-height:1.45;color:var(--ink-2);transition:.15s;
+  box-shadow:0 1px 2px rgba(28,24,18,.05);font-family:inherit}
+.card:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent);transform:translateY(-1px)}
+.card span{display:block;font-size:10px;color:var(--faint);margin-top:5px}
+.card:hover span{color:var(--accent)}
+.msg{display:flex;gap:11px;margin-bottom:24px}
+.av{width:28px;height:28px;border-radius:9px;flex:none;display:grid;place-items:center;font-size:10.5px;
+  font-weight:700;background:var(--panel-3);color:var(--muted);border:1px solid var(--line);margin-top:2px}
+.msg.bot .av{background:linear-gradient(160deg,var(--accent-2),var(--accent));border:0}
+.msg.bot .av svg{stroke:#fff;width:15px;height:15px}
+.body{min-width:0;flex:1}
+.who{font-size:11.8px;font-weight:650;margin-bottom:5px}
+.msg.user .body{background:#f1eefb;border:1px solid var(--accent-line);padding:11px 15px;border-radius:14px 14px 14px 4px;font-size:14.2px;line-height:1.55}
+[data-theme=dark] .msg.user .body{background:#242136}
+.content{font-size:14.4px;line-height:1.68}
+.content p{margin:0 0 10px}
+.content ul{margin:0 0 11px;padding-left:21px}
+.content li{margin:5px 0}
+.content strong{font-weight:640}
+.cite{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;margin:0 1px;
+  vertical-align:1px;border-radius:5px;cursor:pointer;font-size:10.5px;font-weight:700;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);font-family:var(--font)}
+.cite:hover{background:var(--accent);color:#fff}
+.srcwrap{margin-top:11px}
+.srchead{display:inline-flex;align-items:center;gap:6px;font-size:11.8px;font-weight:600;color:var(--muted);
+  background:none;border:0;cursor:pointer;padding:4px 0;font-family:inherit}
+.srchead:hover{color:var(--accent)}
+.srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.4px;padding:4px 9px 4px 6px;border-radius:8px;
+  cursor:pointer;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2);font-family:inherit}
+.chip:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent)}
+.chip .n{font-weight:700;font-size:9.5px;width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent)}
+.chip .pg{color:var(--faint)}
+.meta{display:flex;gap:8px;align-items:center;margin-top:9px;font-size:10.8px;color:var(--faint)}
+.ground{display:inline-flex;align-items:center;gap:5px;font-size:10.8px;font-weight:560;padding:3px 8px;
+  border-radius:99px;background:var(--ok-soft);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 26%,transparent)}
+footer{flex:none;padding:8px 20px 14px}
+.composer{max-width:760px;margin:0 auto;background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:16px;padding:11px 11px 8px 15px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:8px}
+.composer:focus-within{border-color:color-mix(in srgb,var(--accent) 45%,var(--line-strong));
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 11%,transparent),var(--shadow-md)}
+textarea{width:100%;border:0;outline:0;resize:none;background:transparent;color:var(--ink);font:inherit;
+  font-size:14.6px;line-height:1.55;max-height:140px;padding:2px 0 4px}
+textarea::placeholder{color:var(--faint)}
+.bar{display:flex;align-items:center;justify-content:space-between}
+.hint{font-size:10.8px;color:var(--faint)}
+.send{width:36px;height:36px;border-radius:11px;border:0;background:var(--accent);color:#fff;
+  display:grid;place-items:center;cursor:pointer}
+.send:disabled{opacity:.35;cursor:not-allowed}
+.send svg{width:17px;height:17px;stroke-width:2.2}
+.foot{max-width:760px;margin:7px auto 0;text-align:center;font-size:10.4px;color:var(--faint)}
+.pop{position:fixed;z-index:60;width:min(430px,calc(100vw - 28px));background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow-lg);padding:12px 14px 13px}
+.pop h4{margin:0 0 2px;font-size:12.8px;letter-spacing:-.01em}
+.pop .pm{font-size:10.8px;color:var(--faint);display:flex;gap:7px;flex-wrap:wrap}
+.pop .pb{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:12.4px;line-height:1.6;
+  color:var(--ink-2);max-height:230px;overflow-y:auto;white-space:pre-wrap}
+.pop .pb mark{background:color-mix(in srgb,var(--accent) 20%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.x{position:absolute;top:9px;right:9px;width:24px;height:24px;border:0;background:none;color:var(--faint);
+  cursor:pointer;border-radius:6px;display:grid;place-items:center}
+.x:hover{background:var(--panel-3);color:var(--ink)}
+.hidden{display:none!important}
+@media(max-width:680px){.grid{grid-template-columns:1fr}main{padding:16px 13px 6px}footer{padding:6px 12px 12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 64 64"><path d="M32 14a18 18 0 1 0 12.7 5.3"/><circle cx="32" cy="32" r="5"/></svg></div>
+  <div class="brand"><strong>Cortex</strong><span>offline demo · BM25 retrieval in your browser</span></div>
+  <div class="spacer"></div>
+  <span class="pill">static demo</span>
+  <button class="iconbtn" id="theme" title="Toggle theme">
+    <svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+</header>
+
+<main id="scroller">
+  <div class="wrap" id="thread">
+    <div class="hero" id="hero">
+      <div class="orb"></div>
+      <p class="eyebrow">retrieval · citations · grounding</p>
+      <h1>Ask these documents anything.</h1>
+      <p class="sub">49 passages from 5 documents, searched locally in your browser.
+        Every answer is extracted from the passages it cites.</p>
+      <p class="sub" style="margin-top:10px;font-size:12px;opacity:.75">
+        This page is offline. The full app also <b>calls live APIs mid-answer</b> —
+        weather, web search, Wikipedia, a calculator, the clock and any URL you name —
+        plus Claude for synthesised answers.
+      </p>
+      <div class="grid" id="starters"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Ask about leave, pricing, support, retention…"></textarea>
+    <div class="bar">
+      <span class="hint">Enter to ask · runs fully offline</span>
+      <button class="send" id="send" aria-label="Send">
+        <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="foot">Static demo: no model calls and no network. The full app adds Claude and live API tools.</div>
+</footer>
+
+<div class="pop hidden" id="pop">
+  <button class="x" id="popx"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <h4 id="popt"></h4>
+  <div class="pm" id="popm"></div>
+  <div class="pb" id="popb"></div>
+</div>
+
+<script>
+const CHUNKS = [{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › What Aurora Flow is","p":1,"t":"Aurora Flow — Product Guide (v4.2) › What Aurora Flow is\n\nAurora Flow is a workflow automation platform for mid-market operations teams. It connects business systems, adds human approval steps, and gives teams a single audit trail. Version 4.2 shipped **12 March 2026** and is the current generally available release."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Core concepts","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Core concepts\n\n**Workspaces** group related flows, members and data. Each customer account starts with one workspace; Enterprise plans support up to 50.\n\n**Flows** are the automation units. A flow starts with a trigger, then runs a sequence of steps: actions (HTTP requests, database writes, notifications) and gates (human approvals, condition checks). A single flow can hold up to **250 steps**.\n\n**Runs** are executions of a flow. The default maximum run duration is **15 minutes**; the hard limit for any run is 2 hours. Long-running work should be split using the *Wait* step, which can pause a flow for up to 30 days.\n\n**Credentials** are encrypted at rest with AES-256 and are never exposed to flow authors after saving. Keys can be scoped per workspace."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Triggers","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Triggers\n\n- **Webhook** — unique HTTPS endpoint per flow, 10 requests per second per flow.\n- **Schedule** — cron-style, minimum interval 1 minute, time zone aware.\n- **Event** — native listeners for HubSpot, Salesforce, Xero, Slack, Jira and Google Workspace.\n- **Manual** — run on demand from the UI or API.\n\nWebhook payloads are retained for **7 days** on all plans (30 days on Enterprise) for replay and debugging."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Plans and limits (2026 pricing)","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Plans and limits (2026 pricing)\n\n| Plan | Monthly price | Included runs | Max flows | Seats included | Run timeout |\n| --- | --- | --- | --- | --- | --- |\n| Starter | $49 | 5,000 | 20 | 3 | 5 min |\n| Growth | $199 | 40,000 | 100 | 10 | 15 min |\n| Scale | $649 | 250,000 | Unlimited | 25 | 60 min |\n| Enterprise | Custom | Custom | Unlimited | Custom | 120 min |\n\nOverage is billed at **$0.004 per run** on Starter and Growth, and $0.0025 on Scale. Extra seats are $15 each per month on all self-serve plans. Annual billing saves 18%.\n\nSandbox environments are available on Scale and Enterprise and are billed at 30% of the production plan price."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Approvals","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Approvals\n\nHuman approval gates can require a specific role, any member of a team, or a named approver. The default approval timeout is **48 hours**, after which the gate escalates to the assignee's manager. Approvers can act from email, Slack or the mobile app. Every decision records the approver, timestamp and IP address.\n\nApproval steps do not consume runs while waiting."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Integrations","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Integrations\n\nAurora Flow ships 84 native connectors. The most used are Slack, HubSpot, Salesforce, Xero, Jira, Notion, Google Sheets, Microsoft Teams, Zendesk and Shopify. Anything without a native connector can be reached with the **HTTP step**, which supports OAuth 2.0, API keys, mTLS and custom headers.\n\nThe public REST API is rate-limited to **600 requests per minute per account**. API keys are created per workspace and shown only once."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › AI features (beta)","p":1,"t":"Aurora Flow — Product Guide (v4.2) › AI features (beta)\n\nThe **Flow Copilot** lets users describe a workflow in natural language and generates a draft flow. Generated flows are always created in draft state and must be reviewed before activation. Copilot is available on Scale and Enterprise plans, limited to 500 generations per month per account; extra generations cost $0.02 each.\n\nThe **Anomaly Digest** uses run history to flag flows whose failure rate or duration deviates more than 3 standard deviations from their 30-day baseline. It emails a weekly digest on Mondays at 08:00 in the workspace's time zone."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Reliability and SLA","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Reliability and SLA\n\nProduction targets: **99.9% monthly uptime** for the Flow Engine on Growth and above; 99.95% on Enterprise. Scheduled maintenance is announced at least 72 hours in advance and does not count against uptime. Service credits: 10% of monthly fees for uptime between 99.0% and 99.9%, 25% below 99.0%.\n\nStatus is published at status.auroraflow.example. Post-incident reviews are published within 5 business days for any severity-1 incident."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Data, security and compliance","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Data, security and compliance\n\nRuns and payloads are retained for **30 days** by default (90 days on Scale, 12 months on Enterprise). Customer data is hosted in the EU (Frankfurt) or the US (Virginia), chosen at workspace creation and not changeable afterwards.\n\nAurora Flow is SOC 2 Type II certified, GDPR compliant, and offers a signed DPA on request. Data is encrypted in transit with TLS 1.2+ and at rest with AES-256. Backups run every 6 hours and are retained for 35 days.\n\nSingle sign-on via SAML 2.0 and SCIM provisioning are included on Scale and Enterprise. Audit logs are retained for 12 months on Enterprise, 90 days on Scale."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Mobile and accessibility","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Mobile and accessibility\n\nThe mobile app supports approvals, run monitoring and push alerts. It requires iOS 16+ or Android 12+. The web app targets WCAG 2.2 AA; the flow canvas has full keyboard navigation as of v4.1."},{"d":"Aurora_Flow_Product_Guide.md","h":"Aurora Flow — Product Guide (v4.2) › Getting started","p":1,"t":"Aurora Flow — Product Guide (v4.2) › Getting started\n\nTypical time to first production flow is **under one hour**. The onboarding wizard imports a template, connects one system and runs a test execution. Templates are available for employee onboarding, invoice approval, lead routing and churn alerts."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › About this handbook","p":1,"t":"Aurora Labs — Employee Handbook 2026 › About this handbook\n\nThis handbook applies to all permanent employees, fixed-term contractors and interns at Aurora Labs (Pty) Ltd, headquartered in Cape Town with a satellite office in Johannesburg. It is reviewed every January by the People team. Where this handbook conflicts with a signed employment contract, the contract takes precedence.\n\nQuestions about anything in this document go to people@auroralabs.example."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Annual leave","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Annual leave\n\nPermanent employees accrue **25 days of paid annual leave per calendar year**, in addition to public holidays. Leave accrues monthly at 2.08 days per month and is available from the first day of employment. Up to **5 unused days may be carried over** into the next calendar year and must be used by 31 March, after which they are forfeited.\n\nLeave requests are made in Aurora Flow under *People → Time off*. Requests longer than five consecutive working days need approval from both the line manager and the People team. During December, the company enforces a **minimum team coverage of 50%** — managers may decline leave that would breach this."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Sick leave","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Sick leave\n\nEmployees receive **30 days of paid sick leave per three-year cycle**. A medical certificate is required for any absence longer than two consecutive days. Sick leave may not be converted to cash and does not carry over between cycles."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Parental leave","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Parental leave\n\n- **Primary caregiver:** 20 weeks fully paid.\n- **Secondary caregiver:** 8 weeks fully paid.\n- Adoption and surrogacy follow the same structure as parental leave, effective from the date the child joins the household.\n- Employees returning from parental leave may request a phased return (60% hours at full pay) for the first four weeks."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Study and exam leave","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Leave and time off › Study and exam leave\n\nEmployees may take **5 days of paid study leave per year** for approved courses related to their role. Approval is at manager discretion. Exam leave is deducted from this allowance."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Remote and hybrid work","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Remote and hybrid work\n\nAurora Labs operates a **hybrid-first** model. All employees may work remotely up to **3 days per week**, with Tuesdays and Thursdays designated as anchor days in the office for teams. Fully remote arrangements require VP approval and a documented home-office assessment."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Core hours","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Core hours\n\nCore collaboration hours are **10:00–15:00 SAST**, Monday to Friday. Outside core hours, employees may schedule work flexibly, provided they attend meetings and meet deliverables. Employees in other time zones agree core hours with their manager, with at least four overlapping hours with their team."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Home-office allowance","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Home-office allowance\n\n- **New employees:** R12,000 one-off stipend, payable after probation, for a desk, chair or monitor.\n- **Existing employees:** R2,500 annual refresh allowance.\n- Equipment bought with the stipend belongs to the employee after 12 months of use."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Internet and power","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Working arrangements › Internet and power\n\nThe company reimburses **up to R800 per month** for home internet where remote work exceeds 2 days per week. During scheduled load-shedding, employees may claim a **R350 monthly backup-power allowance** without submitting invoices."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Expenses","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Expenses\n\nAll expenses must be submitted within **30 days** of the transaction through Aurora Flow → Finance → Expenses. Receipts are mandatory for any claim above R150.\n\n| Category | Limit |\n| --- | --- |\n| Local accommodation | R2,400 per night |\n| International accommodation | R4,500 per night |\n| Meals during travel | R650 per day |\n| Client entertainment | R1,100 per person, pre-approved by a director |\n| Taxi / ride-hailing after 20:00 | Approved for safety, no cap |\n\nExpenses above R10,000 in total per month require an additional finance review. Corporate cards are issued to directors and team leads only."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Learning and development","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Learning and development\n\nEach employee has an annual **L&D budget of R25,000** for courses, certifications, books and conferences. Requests are made in Aurora Flow and auto-approved if the amount is under R5,000 and the course relates to the employee's development plan. Unused L&D budget expires on 31 December and is not paid out.\n\nThe company runs **Learning Friday**: the last Friday of each month is reserved for learning, with no internal meetings scheduled."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Performance and progression","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Performance and progression\n\nPerformance is reviewed twice a year (April and October) using a four-point scale: *Below, Meeting, Exceeding, Outstanding*. Promotion cycles run in **May and November**. Employees must be in their current role for at least 6 months and rated *Exceeding* or above to be eligible for promotion.\n\nCompensation is benchmarked annually against the South African market using a 60th percentile target. Bonuses, where applicable, are paid in December and are discretionary."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › Device and account security","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › Device and account security\n\nAll laptops must have full-disk encryption and the Aurora endpoint agent installed. Passwords must be at least **14 characters** and managed in the company password manager — reuse is prohibited. Multi-factor authentication is mandatory on all company accounts. Hardware security keys are issued to engineering, finance and executive staff."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › Confidentiality","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › Confidentiality\n\nCustomer data may only be processed in systems approved by the Security team. Copying production data to personal devices is prohibited. Any suspected data breach must be reported to security@auroralabs.example **within 1 hour** of discovery; the incident hotline is +27 21 555 0142."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › AI tool usage","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Conduct, security and data › AI tool usage\n\nEmployees may use approved AI assistants (currently Claude via the company workspace) for drafting and analysis. **Customer data must never be pasted into unapproved AI tools.** AI-generated content that is shared externally must be reviewed by a human owner who takes responsibility for accuracy. Use of AI in hiring decisions is not permitted."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Travel","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Travel\n\nDomestic travel is booked through the travel desk at least **7 days** in advance; international travel at least **21 days** in advance. Economy class for flights under 6 hours, premium economy for flights over 6 hours with director approval. Travel insurance is arranged automatically."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Onboarding","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Onboarding\n\nNew employees receive their laptop by courier **before** their start date. Week 1 includes security training, a product deep-dive and a buddy assignment. Probation is **3 months** for individual contributors and **6 months** for managers. A first performance conversation happens at day 30."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Leaving Aurora","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Leaving Aurora\n\nNotice periods: **30 days** for individual contributors, **60 days** for managers and directors. Exit interviews are conducted by the People team. Leave payouts are limited to the 5 carried-over days described above. Laptops must be returned within 5 working days of the last day."},{"d":"Aurora_Employee_Handbook.md","h":"Aurora Labs — Employee Handbook 2026 › Getting help","p":1,"t":"Aurora Labs — Employee Handbook 2026 › Getting help\n\n- People team: people@auroralabs.example\n- IT service desk: helpdesk@auroralabs.example or #it-help on Slack\n- Security incidents: security@auroralabs.example (1-hour reporting rule)\n- Payroll queries: payroll@auroralabs.example — cut-off for monthly changes is the **15th**."},{"d":"Aurora_Flow_Pricing_2026.csv","h":"","p":1,"t":"Starter — Monthly price (USD): 49, Annual price (USD): 482, Included runs: 5000, Max flows: 20, Seats: 3, Run timeout (min): 5, Support tier: Standard, Sandbox: No.\n\nGrowth — Monthly price (USD): 199, Annual price (USD): 1958, Included runs: 40000, Max flows: 100, Seats: 10, Run timeout (min): 15, Support tier: Priority, Sandbox: No.\n\nScale — Monthly price (USD): 649, Annual price (USD): 6386, Included runs: 250000, Max flows: Unlimited, Seats: 25, Run timeout (min): 60, Support tier: Named engineer, Sandbox: Yes.\n\nEnterprise — Monthly price (USD): Custom, Annual price (USD): Custom, Included runs: Custom, Max flows: Unlimited, Seats: Custom, Run timeout (min): 120, Support tier: Named engineer + QBR, Sandbox: Yes."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Purpose and scope","p":1,"t":"Aurora Labs — Customer Support Playbook › Purpose and scope\n\nThis playbook defines how the Support team handles customer conversations for Aurora Flow. It covers severity definitions, response targets, escalation, refunds and the most common troubleshooting paths. The playbook is owned by the Head of Support and reviewed quarterly."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Support channels and hours","p":1,"t":"Aurora Labs — Customer Support Playbook › Support channels and hours\n\n- **In-app chat and email** — 07:00 to 19:00 SAST, Monday to Friday.\n- **Emergency line** — 24/7 for severity-1 incidents only, reachable from the status page.\n- **Community forum** — monitored during business hours.\n\nFirst response targets are measured in **business hours**. Weekends and South African public holidays do not count."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Severity definitions","p":1,"t":"Aurora Labs — Customer Support Playbook › Severity definitions\n\n| Severity | Definition | First response | Update cadence |\n| --- | --- | --- | --- |\n| S1 — Critical | Platform unavailable or data loss for multiple customers | 15 minutes, 24/7 | Every 60 minutes |\n| S2 — High | Major feature broken with no workaround; single customer fully blocked | 1 hour | Every 4 business hours |\n| S3 — Normal | Feature impaired but a workaround exists | 8 business hours | Every 2 business days |\n| S4 — Low | Question, cosmetic issue, feature request | 2 business days | As needed |\n\nAny ticket can be upgraded to S1 by an on-call engineer if the impact justifies it. Downgrades require the Support Lead's approval."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Response and resolution targets","p":1,"t":"Aurora Labs — Customer Support Playbook › Response and resolution targets\n\n- Starter plan: standard targets above.\n- Growth plan: **S2 first response within 30 minutes**, S3 within 4 business hours.\n- Scale and Enterprise: **named support engineer**, S2 within 15 minutes, plus a monthly review call.\n\nResolution (not just response) targets: S1 — 4 hours; S2 — 2 business days; S3 — 10 business days. These are goals, not contractual SLAs, except where the Enterprise agreement says otherwise."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › The escalation matrix","p":1,"t":"Aurora Labs — Customer Support Playbook › The escalation matrix\n\n1. **Tier 1 (Support Specialist)** — triage, known-issue fixes, account questions.\n2. **Tier 2 (Support Engineer)** — log analysis, configuration problems, API issues.\n3. **Tier 3 (On-call Engineering)** — suspected platform bugs, data integrity, security.\n\nTier 2 must be engaged within 30 minutes for any S1 or S2. Tier 3 is paged through PagerDuty by the on-call engineer; support agents do not page Tier 3 directly. The **Incident Commander** for any S1 is the on-call engineering lead, not the support agent.\n\nStatus updates during S1 go to the customer every **60 minutes**, even when there is no new information."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Refunds, credits and cancellation","p":1,"t":"Aurora Labs — Customer Support Playbook › Refunds, credits and cancellation\n\nSelf-serve plans (Starter, Growth, Scale) can be cancelled at any time from billing settings and remain active until the end of the paid period. The company does **not** provide cash refunds for partial months. Instead, the standard remedy is:\n\n- **14-day money-back guarantee** for first-time subscribers, measured from the first successful payment.\n- Pro-rata service credits for downtime, applied against the next invoice.\n- Duplicate or accidental charges are refunded in full when reported within **60 days**.\n\nEnterprise agreements follow the signed contract; the standard Enterprise remedy is a service credit, not a cash refund.\n\nAnnual plans cancelled mid-term receive a credit for unused full months, minus any discount already applied. Credits expire after 12 months."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Identity verification before account changes","p":1,"t":"Aurora Labs — Customer Support Playbook › Identity verification before account changes\n\nSupport must verify the requester before changing billing details, SSO settings or workspace ownership. Acceptable verification: a signed email from the workspace owner's domain, or a video call plus government ID. **Never** reset MFA on the basis of an email request alone — escalate to the Security team."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Runs failing with timeout","p":1,"t":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Runs failing with timeout\n\nCheck the flow's plan limit: Starter flows stop after 5 minutes, Growth after 15, Scale after 60. Split long work with the *Wait* step, or reduce batch size in loop steps. If a run exceeds the limit on Enterprise, open an S3 ticket and attach the run ID."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Webhooks not arriving","p":1,"t":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Webhooks not arriving\n\nConfirm the endpoint shows *Active*, that the sender is using the flow's unique URL, and that the request is JSON. Aurora Flow retries failed deliveries 3 times with exponential backoff over 10 minutes. Payload replay is available for 7 days."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Approval stuck in pending","p":1,"t":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Approval stuck in pending\n\nApprovals escalate automatically after 48 hours. If the approver has left the company, a workspace admin can reassign the gate. If escalation did not fire, capture the run ID and raise an S3 — this was a known defect fixed in v4.1."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › SSO login loop","p":1,"t":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › SSO login loop\n\nUsually caused by a clock skew above 5 minutes or an expired SAML certificate. Ask the customer's IT admin to re-upload the certificate in workspace settings. SCIM provisioning issues are Tier 2."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Rate limit errors from the API","p":1,"t":"Aurora Labs — Customer Support Playbook › Common troubleshooting paths › Rate limit errors from the API\n\nThe public API allows 600 requests per minute per account. Clients should honour the `Retry-After` header. Repeated bursts above the limit can trigger a temporary 15-minute block, which Tier 2 can lift."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Known issues (as of v4.2)","p":1,"t":"Aurora Labs — Customer Support Playbook › Known issues (as of v4.2)\n\n- Mobile push notifications may arrive twice on Android 14 when battery optimisation is disabled. Fix scheduled for v4.3.\n- CSV exports over 200,000 rows time out in the browser. Use the API export endpoint instead.\n- Workspace names with emoji are rejected by the billing portal but accepted in the app."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Customer communication standards","p":1,"t":"Aurora Labs — Customer Support Playbook › Customer communication standards\n\n- Always acknowledge impact before explaining cause.\n- Never speculate about root cause in an S1 update; say what is known and when the next update will come.\n- Avoid promising a fix date unless Engineering has committed to one in writing.\n- Close tickets with a one-paragraph summary of what was done and links to relevant documentation."},{"d":"Aurora_Support_Playbook.md","h":"Aurora Labs — Customer Support Playbook › Feature requests","p":1,"t":"Aurora Labs — Customer Support Playbook › Feature requests\n\nFeature requests are logged in the product board with the customer's plan tier and estimated deal value. Requests from Scale and Enterprise customers are reviewed weekly by Product. There is no commitment to delivery timelines."},{"d":"Aurora_Data_Retention_Policy.pdf","h":"Aurora Labs - Data Retention & Sub-processor Policy","p":1,"t":"Aurora Labs - Data Retention & Sub-processor Policy\n\nOwner: Information Security | Version 3.1 | Effective 1 April 2026 | Review: annual\n1. Purpose\n\nThis policy defines how long Aurora Labs retains customer and operational data, and how sub-processors are\nmanaged. It applies to all production systems and to every employee who handles customer data.\n2. Retention periods\n\nCustomer records are retained for 7 years after account closure, as required by financial record-keeping\nobligations. Audit logs are retained for 18 months. Application logs are retained for 30 days, and database backups\nare destroyed after 90 days.\nFlow run payloads follow the product retention schedule: 30 days by default, 90 days on Scale and 12 months on\nEnterprise. Deletion requests are validated against the workspace owner and processed within 30 days."},{"d":"Aurora_Data_Retention_Policy.pdf","h":"Sub-processors","p":2,"t":"Sub-processors\n\nAurora Labs uses the following sub-processors. Each is bound by a data processing agreement that meets or\nexceeds our own commitments to customers.\nSub-processor Purpose Location"},{"d":"Aurora_Data_Retention_Policy.pdf","h":"Change notification","p":2,"t":"Change notification\n\nCustomers are notified at least 30 days before a new sub-processor is added and may object in writing. Objections\nare reviewed by the DPO within 10 business days.\n5. Breach notification\n\nConfirmed data breaches are reported to affected customers within 72 hours, and to the Information Regulator\nwhere POPIA requires it. Internally, any suspected breach must reach the Security team within 1 hour of discovery\n(security@auroralabs.example).\n6. Roles\n\nThe Chief Information Security Officer owns this policy. The Data Protection Officer approves sub-processor\nchanges and handles regulator communication. Engineering teams own deletion automation for their systems."}];
+const SUGGESTED = ["How many annual leave days do I get and can I carry any over?", "What is the run timeout on the Scale plan?", "Which sub-processors process our data?", "Can I get a cash refund for a partial month?"];
+
+/* ---------- BM25 ---------- */
+const STOP = new Set("a an and are as at be been being but by can could did do does doing for from had has have having he her here hers him his how i if in into is it its itself just me more most my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your many much any also still just get got please tell".split(" "));
+const stem = t => t.length>5&&t.endsWith("ing")?t.slice(0,-3):
+  t.length>5&&t.endsWith("ied")?t.slice(0,-3)+"y":
+  t.length>4&&t.endsWith("ies")?t.slice(0,-3)+"y":
+  t.length>4&&t.endsWith("es")&&!t.endsWith("ses")?t.slice(0,-2):
+  t.length>3&&t.endsWith("s")&&!t.endsWith("ss")?t.slice(0,-1):t;
+const tok = s => (s.toLowerCase().match(/[a-z0-9][a-z0-9'\-]*/g)||[])
+  .map(x=>x.replace(/^['-]+|['-]+$/g,"")).filter(x=>x.length>1&&!STOP.has(x)).map(stem);
+
+const DOCS = CHUNKS.map(c => ({
+  ...c,
+  toks: tok(c.t + " " + c.d + " " + c.h),
+  raw: (" " + c.t + " " + c.d + " " + c.h + " ").toLowerCase().replace(/[ \t\n\r]+/g, " ")
+}));
+// plain (unstemmed) words for phrase matching
+const words = s => (s.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) || []).filter(w => w.length > 2);
+const N = DOCS.length;
+const avgdl = DOCS.reduce((a,d)=>a+d.toks.length,0)/N;
+const df = {};
+DOCS.forEach(d => new Set(d.toks).forEach(t => df[t]=(df[t]||0)+1));
+const idf = t => Math.log(1 + (N-(df[t]||0)+0.5)/((df[t]||0)+0.5));
+
+function bm25(qt, phraseBonus){
+  const k1=1.5,b=0.75;
+  return DOCS.map(d=>{
+    const tf={}; d.toks.forEach(t=>tf[t]=(tf[t]||0)+1);
+    let s=0;
+    for(const t of new Set(qt)){
+      const f=tf[t]; if(!f) continue;
+      s += idf(t) * (f*(k1+1))/(f + k1*(1-b+b*d.toks.length/avgdl));
+    }
+    s = s / Math.max(1, Math.sqrt(new Set(qt).size));
+    return s + (phraseBonus ? phraseBonus(d) : 0);
+  });
+}
+
+// adjacent query-word pairs appearing verbatim ("annual leave", "carry over")
+function phraseMatcher(q){
+  const w = words(q);
+  const pairs = [];
+  for(let i=0;i<w.length-1;i++) pairs.push(w[i]+" "+w[i+1]);
+  if(!pairs.length) return null;
+  return d => pairs.reduce((a,p)=> a + (d.raw.includes(" "+p+" ") ? 1 : 0), 0) * 1.8;
+}
+
+function search(q){
+  const qt = tok(q);
+  const scores = bm25(qt, phraseMatcher(q));
+  const idx = scores.map((s,i)=>({s,i})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,6);
+  return idx.map(({s,i},rank)=>({...DOCS[i], score:s, rank, idx:i}));
+}
+
+function qtSize(q){ return Math.max(1, new Set(tok(q)).size); }
+
+// terms the corpus has never seen ("ceo", "berlin") mean we cannot answer
+function unknownTerms(q){
+  return [...new Set(tok(q))].filter(t => !(df[t] > 0) && t.length > 2);
+}
+
+/* ---------- answer ---------- */
+const sentences = t => t.split(/\n\s*\n/).flatMap(p=>p.replace(/\s+/g," ").split(/(?<=[.!?])\s+/))
+  .map(s=>s.trim()).filter(s=>s.length>30);
+
+function answer(q, hits){
+  const qt = new Set(tok(q));
+  const picked = [];
+  const seen = new Set();
+  hits.slice(0,3).forEach((h,i)=>{
+    let body = h.t;
+    if (h.h && body.startsWith(h.h)) body = body.slice(h.h.length).replace(/^\n+/,"");
+    let taken=0;
+    for(const s of sentences(body)){
+      const key = s.slice(0,60).toLowerCase();
+      if(seen.has(key) || s.includes("| ---")) continue;
+      const ts = new Set(tok(s));
+      let shared=0; qt.forEach(t=>{ if(ts.has(t)) shared++; });
+      if(!shared) continue;
+      seen.add(key);
+      picked.push({ txt: s.replace(/\*\*/g,""), n: i+1, sc: shared/Math.sqrt(qt.size||1) });
+      if(++taken>=2) break;
+    }
+  });
+  picked.sort((a,b)=>b.sc-a.sc);
+  const best = picked.length? picked[0].sc : 0;
+  const keep = picked.filter(p=>p.sc >= best*0.5).slice(0,4);
+  keep.sort((a,b)=>a.n-b.n);
+  return keep;
+}
+
+function verified(sent, hits){
+  const c = (sent.match(/\[(\d)\]/g)||[]).map(x=>+x[1]);
+  if(!c.length) return false;
+  const probe = tok(sent.replace(/\[\d\]/g," "));
+  const src = new Set(tok(hits[(c[0]||1)-1]?.t||""));
+  if(!probe.length) return false;
+  let shared=0; probe.forEach(t=>{ if(src.has(t)) shared++; });
+  return shared/probe.length >= 0.42;
+}
+
+/* ---------- render ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const thread = $("#thread"), scroller = $("#scroller");
+let busy = false;
+
+function markdown(t){
+  const inline = s => esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[(\d)\]/g, '<button class="cite" data-n="$1">$1</button>');
+
+  const out = [];
+  let list = null;
+  for (const raw of t.split("\n")) {
+    const line = raw.trim();
+    if (!line) { if (list) { out.push(list); list = null; } continue; }
+    if (line.startsWith("- ")) {
+      if (!list) list = ["<ul>"];
+      list.push("<li>" + inline(line.slice(2)) + "</li>");
+    } else {
+      if (list) { out.push(list); list = null; }
+      out.push("<p>" + inline(line) + "</p>");
+    }
+  }
+  if (list) out.push(list);
+  return out.map(x => Array.isArray(x) ? x.join("") + "</ul>" : x).join("");
+}
+
+function addUser(text){
+  const el = document.createElement("div");
+  el.className = "msg user";
+  el.innerHTML = `<div class="av">You</div><div class="body">${esc(text)}</div>`;
+  thread.appendChild(el);
+}
+
+function addBot(text, hits){
+  const el = document.createElement("div");
+  el.className = "msg bot";
+  const chips = hits.map((h,i)=>`<button class="chip" data-i="${i}">
+      <span class="n">${i+1}</span><span>${esc(h.d)}</span>
+      ${h.d.endsWith(".pdf")?`<span class="pg">p.${h.p}</span>`:""}</button>`).join("");
+  const grounded = hits.length
+    ? text.split(/(?<=[.!?])\s+(?!\[)|\n+/).filter(s=>/\[\d\]/.test(s)).map(s=>verified(s,hits))
+    : [];
+  const okCount = grounded.filter(Boolean).length;
+  el.innerHTML = `
+    <div class="av"><svg viewBox="0 0 64 64"><path d="M32 14a18 18 0 1 0 12.7 5.3"/><circle cx="32" cy="32" r="5"/></svg></div>
+    <div class="body">
+      <div class="who">Cortex</div>
+      <div class="content">${markdown(text)}</div>
+      <div class="srcwrap">
+        <button class="srchead" id="toggle">${hits.length} source${hits.length>1?"s":""}</button>
+        <div class="srcs">${chips}</div>
+      </div>
+      <div class="meta">
+        ${grounded.length?`<span class="ground"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>${okCount}/${grounded.length} claims grounded</span>`:""}
+        <span>${hits.length} passages</span><span>·</span><span>0.4s</span>
+      </div>
+    </div>`;
+  thread.appendChild(el);
+  el.querySelector("#toggle").onclick = () => {
+    const s = el.querySelector(".srcs");
+    s.classList.toggle("hidden");
+  };
+  el.querySelectorAll(".chip").forEach(c => c.onclick = ev => openPop(hits[+c.dataset.i], ev));
+  el.querySelectorAll(".cite").forEach(c => c.onclick = ev => openPop(hits[+c.dataset.n-1], ev));
+  return el;
+}
+
+function openPop(h, ev){
+  if(!h) return;
+  $("#popt").textContent = h.d;
+  $("#popm").innerHTML = [h.d.endsWith(".pdf")?`page ${h.p}`:"", esc((h.h||"").split("›").slice(-2).join(" › "))]
+    .filter(Boolean).map(x=>`<span>${x}</span>`).join("<span>·</span>");
+  $("#popb").innerHTML = esc(h.t);
+  const pop = $("#pop");
+  pop.classList.remove("hidden");
+  const r = ev.currentTarget.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+  let left = Math.max(12, Math.min(innerWidth - pr.width - 12, r.left + r.width/2 - pr.width/2));
+  let top = r.bottom + 8;
+  if(top + pr.height > innerHeight - 12) top = Math.max(12, r.top - pr.height - 8);
+  pop.style.left = left+"px"; pop.style.top = top+"px";
+}
+$("#popx").onclick = () => $("#pop").classList.add("hidden");
+document.addEventListener("click", e => {
+  if(!e.target.closest("#pop") && !e.target.closest(".chip") && !e.target.closest(".cite"))
+    $("#pop").classList.add("hidden");
+});
+
+function ask(q){
+  if(busy || !q.trim()) return;
+  busy = true; $("#send").disabled = true;
+  $("#hero")?.remove();
+  addUser(q);
+  const unknown = unknownTerms(q);
+  const hits = search(q);
+  const scroll = () => scroller.scrollTo({top: scroller.scrollHeight, behavior:"smooth"});
+  scroll();
+  setTimeout(()=>{
+    if(!hits.length || (unknown.length && (unknown.length >= qtSize(q) * 0.4 || qtSize(q) <= 4))){
+      const topic = unknown.length ? `“${unknown.slice(0,3).join("”, “")}”` : "that";
+      addBot(`I couldn't find anything about ${topic} in these five documents. ` +
+             "Try asking about leave, pricing, support targets or data retention — those are what this demo corpus covers.", []);
+    } else {
+      const keeps = answer(q, hits);
+      const text = keeps.length
+        ? "Here's what your documents say:\n\n" + keeps.map(k=>`- ${k.txt} [${k.n}]`).join("\n")
+        : "I found related passages but couldn't isolate a clean answer. The nearest sources are below.";
+      addBot(text, hits);
+    }
+    busy = false; $("#send").disabled = false;
+    scroll();
+  }, 340);
+}
+
+$("#starters").innerHTML = SUGGESTED.map(q=>`<button class="card">${esc(q)}<span>grounded &amp; cited</span></button>`).join("");
+$("#starters").onclick = e => { const b = e.target.closest(".card"); if(b) ask(b.firstChild.textContent.trim()); };
+$("#send").onclick = () => { ask($("#input").value); $("#input").value=""; $("#input").style.height="auto"; };
+$("#input").addEventListener("keydown", e => {
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); ask($("#input").value); $("#input").value=""; $("#input").style.height="auto"; }
+});
+$("#input").addEventListener("input", e => {
+  e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,140)+"px";
+});
+$("#theme").onclick = () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+};
+$("#input").focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+services:
+  cortex:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - cortex_data:/data
+    restart: unless-stopped
+
+volumes:
+  cortex_data:

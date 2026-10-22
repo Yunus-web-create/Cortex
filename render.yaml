@@ -1,0 +1,51 @@
+# Cortex on Render — https://render.com
+#
+# Free plan, no card, permanent https://<name>.onrender.com address.
+#   1. push this folder to a GitHub repo
+#   2. Render → New → Blueprint → pick the repo → Apply
+#   3. Render asks for CORTEX_PASSWORD (anything you'll remember) — everything else is optional
+#
+# What "free" means (render.com/docs/free): 512 MB RAM, shared CPU, the service sleeps after
+# 15 minutes without traffic (~45 s to wake), and the filesystem is ephemeral — chat history and
+# uploaded documents are lost whenever the service sleeps, restarts or redeploys. The app itself,
+# the models and your settings in the browser survive; only server-side data resets.
+#
+# To make data survive too, attach a disk (paid compute). Uncomment the block at the bottom and
+# change plan to "starter". Nothing else needs to change — the app already reads CORTEX_DATA_DIR.
+services:
+  - type: web
+    name: cortex
+    runtime: docker
+    plan: free
+    region: frankfurt            # closest free region to southern Africa (~200 ms to ZA)
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # the login password for your phone and laptop. Render prompts for it during setup.
+      - key: CORTEX_PASSWORD
+        sync: false
+      # optional free-tier keys — the app runs without them, just on a slower shared model
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      # keeps the ONNX runtime inside the 512 MB free instance
+      - key: OMP_NUM_THREADS
+        value: "1"
+      # set to 0 if the instance runs out of memory: retrieval stays hybrid keyword+dense,
+      # only the cross-encoder reranking pass is skipped.
+      - key: CORTEX_RERANK
+        value: "1"
+
+# --- optional: persistent data (requires paid compute, ~$7/month) -----------------------------
+#    plan: starter
+#    disk:
+#      name: cortex-data
+#      mountPath: /data
+#      sizeGB: 1
+#    envVars:
+#      - key: CORTEX_DATA_DIR
+#        value: /data

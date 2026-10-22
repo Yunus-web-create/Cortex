@@ -1,0 +1,16 @@
+# Pinned to the versions the 215-check suite runs against, so a deploy builds the same
+# thing this project was tested on instead of whatever shipped that morning.
+fastapi==0.119.1
+uvicorn[standard]==0.54.0
+starlette==0.48.0
+httpx==0.28.1
+anthropic==2.1.0
+pypdf==6.21.2
+python-docx==1.1.2
+python-multipart==0.0.32
+numpy==2.3.5
+fastembed==0.9.0
+onnxruntime==1.31.0
+# zero-cost media: free neural voices + a bundled ffmpeg for local video
+edge-tts==7.3.1
+imageio-ffmpeg==0.6.0
