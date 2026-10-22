@@ -325,6 +325,9 @@ python tests/free_test.py         # 19 — provider pool, failover, free media r
 python tests/gemini_test.py       # 32 — Google free tier, quota vs billing, signatures, parking
 python tests/openrouter_test.py   # 22 — $0 key routes to free models only, credit flips it back
 python tests/auth_test.py         # 38 — login page, cookie flags, open-redirect guard, Basic, logout
+python tests/tooltext_test.py     # 28 — tool calls written as text: parsing, chunk splits, no false positives
+python tests/speed_test.py        # 18 — stalled streams abandoned, 429 reset windows, no false timeouts
+python tests/provider_order_test.py  # 4 — a $0 OpenRouter key never leads a turn
 python tests/eval_retrieval.py    # retrieval quality on a golden set
 ```
 
@@ -342,6 +345,38 @@ Retrieval numbers on the bundled corpus (49 chunks, 18 golden questions):
 the suites — it lets the whole agent loop run in CI without a key.
 
 ---
+
+## When a model misbehaves
+
+Two failures are common enough on free routes that they are handled by name.
+
+**A model prints the tool call instead of making one.** Some open-weight models
+(Nemotron on OpenRouter, seen in production) emit
+
+```text
+<tool_call>
+<function=fetch_url>
+<parameter=url>
+http://example.org
+</parameter>
+</function>
+</tool_call>
+```
+
+as *content*. `app/tooltext.py` filters the delta stream: it holds back anything
+that could be the start of a tag (a tag can be split across two chunks), turns a
+complete block into a real tool call, and drops the markup. A stray
+`<tool_call>` in ordinary prose is left alone, and a bare `<function=x>` only
+counts when `x` is a tool actually offered that turn.
+
+**A model sits in a queue.** `gateway.chat_stream(..., first_token=20)` abandons
+a stream that has produced no content in that window, parks the model for 15
+minutes and returns a retryable error, so the turn moves to the next model
+instead of hanging. Reasoning tasks get 45 s, coding 25 s. On top of that a turn
+has a 75 s budget: past it the model answers with the tool results it already
+has rather than starting another round. A 429 also carries its own reset window
+(OpenRouter's daily cap is hours, not a minute), so a dead provider is skipped
+instead of being retried every turn.
 
 ## Configuration
 
@@ -368,6 +403,8 @@ Set in `.env` or the environment:
 | `CORTEX_RERANK` | `1` | Cross-encoder reranking |
 | `CORTEX_MAX_TOKENS` | `1600` | Answer cap |
 | `CORTEX_TOOL_ROUNDS` | `3` | Tool rounds before it must answer |
+| `CORTEX_FIRST_TOKEN_TIMEOUT` | `20` | Seconds to wait for the first byte of an answer before switching models |
+| `CORTEX_TURN_BUDGET` | `75` | Wall-clock budget for a whole turn; past it the model must answer with what it has |
 | `CORTEX_TOOL_TIMEOUT` | `12` | Per-call tool timeout |
 | `CORTEX_WEB_TIMEOUT` / `CORTEX_WEB_CACHE_TTL` | `15` / `3600` | Search + page fetch |
 | `CORTEX_WS_TIMEOUT` / `CORTEX_WS_MAX_BYTES` | `20` / `2 MB` | Workspace run/file limits |
