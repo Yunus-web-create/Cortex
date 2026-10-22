@@ -497,8 +497,16 @@ async def _retrieve(question: str, history: list[dict],
     s = settings()
     min_rel = float(s.get("min_relevance", config.MIN_RELEVANCE))
     uncertain = not sources or sources[0]["score"] < config.ADAPTIVE_CONFIDENCE
-    if config.ADAPTIVE and uncertain and gateway.configured():
-        variants = await quality.expand_queries(query, config.MAX_EXPANSIONS)
+    # expanding queries only helps when there is a corpus to search; with no
+    # documents it costs a model round-trip and returns nothing, which used to put
+    # ten seconds in front of every question asked before any upload
+    has_corpus = int(diag.get("candidates") or 0) > 0
+    if config.ADAPTIVE and uncertain and has_corpus and gateway.configured():
+        try:
+            variants = await asyncio.wait_for(
+                quality.expand_queries(query, config.MAX_EXPANSIONS), timeout=3.5)
+        except Exception:
+            variants = []
         if variants:
             merged: dict[str, dict] = {str(x["chunk_id"]): x for x in sources}
             for variant in variants:
@@ -518,6 +526,21 @@ async def _retrieve(question: str, history: list[dict],
     diag["query_used"] = query
     return query, sources, diag
 
+
+# Questions that are answered by understanding, not by today's facts. These skip
+# the pre-fetch so the reply starts in a second or two; if the model decides it
+# actually needs the web it can still call a search tool mid-turn.
+STABLE_KNOWLEDGE = re.compile(
+    r"^\s*(?:what (?:is|are|does|do|was|were)|how (?:does|do|did|is|are|come)|"
+    r"why (?:does|do|did|is|are)|explain|define|describe|compare|"
+    r"difference between|tell me about)\b", re.I)
+
+# Anything the model should write itself. Searching for "rain on a tin roof"
+# returns other people's poems, which is worse than useless in the prompt.
+CREATIVE = re.compile(
+    r"\b(write|compose|draft|make) (?:me )?(?:a|an|some)? ?(poem|haiku|limerick|story|"
+    r"essay|song|lyrics|joke|tagline|slogan|caption|headline|letter|email)\b|"
+    r"\b(poem|haiku|limerick|lyrics|short story|screenplay)\b", re.I)
 
 LIVE_CUES = re.compile(
     r"\b(latest|today|tonight|this (?:week|month|year)|current|currently|now|news|headlines?|"
@@ -547,6 +570,11 @@ def _wants_web(question: str, doc_sources: list[dict], mode: str) -> bool:
         return False                      # small talk: "say hello in five words"
     if LIVE_CUES.search(question) and (factual or task not in ("code", "creative")):
         return not _docs_answer_it(doc_sources)
+    if CREATIVE.search(question) and not LIVE_CUES.search(question):
+        return False                      # a poem does not need the web
+    if STABLE_KNOWLEDGE.search(question) and not LIVE_CUES.search(question):
+        # "what does a barometer measure" does not need today's news
+        return False
     if task in ("code", "creative"):
         return False                      # tools and the model itself are enough
     if not doc_sources:
@@ -737,6 +765,10 @@ async def chat(payload: dict):
                         break
 
             answer = "".join(parts).strip()
+            # the answer is finished here; anything timed after this point (grounding
+            # checks, follow-up generation) is bookkeeping the user never waited for,
+            # so it must not be counted in the latency shown under the answer.
+            answered_at = time.perf_counter()
             if answer:
                 grounding = (quality.verify_grounding(answer, doc_sources)
                              if doc_sources else {"score": None, "claims": 0, "supported": 0, "details": []})
@@ -756,7 +788,12 @@ async def chat(payload: dict):
                                     "Check the sources before relying on this answer."),
                     })
                 if gateway.configured():
-                    fu = await quality.followups(question, answer, sources)
+                    # a slow follow-up model must not hold the finished answer open
+                    try:
+                        fu = await asyncio.wait_for(
+                            quality.followups(question, answer, sources), timeout=4.0)
+                    except Exception:
+                        fu = None
                     if fu:
                         yield sse("followups", {"questions": fu})
                 meta.update({
@@ -766,7 +803,8 @@ async def chat(payload: dict):
                     "output_tokens": usage.get("output_tokens", 0),
                     "cost_usd": usage.get("cost_usd", 0),
                     "tier": usage.get("tier") or ("free" if gateway.free_tier() else "paid"),
-                    "latency_ms": round((time.perf_counter() - t0) * 1000),
+                    "latency_ms": round((answered_at - t0) * 1000),
+                    "total_ms": round((time.perf_counter() - t0) * 1000),
                     "retrieval_ms": diag.get("retrieval_ms", 0),
                     "citations": len(sources),
                     "gateway": gateway.provider_name(),
@@ -777,7 +815,12 @@ async def chat(payload: dict):
                 db.touch_conversation(conv["id"])
                 existing = [m for m in db.get_messages(conv["id"]) if m["role"] == "user"]
                 if len(existing) == 1 and gateway.configured():
-                    nice = await quality.make_title(question)
+                    # a nice title is cosmetic; never let a slow model hold the turn
+                    # open for it (this used to add up to a minute to short chats)
+                    try:
+                        nice = await asyncio.wait_for(quality.make_title(question), timeout=4.0)
+                    except Exception:
+                        nice = None
                     if nice:
                         db.update_conversation_title(conv["id"], nice)
                         yield sse("title", {"title": nice})

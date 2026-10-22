@@ -81,7 +81,8 @@ def _reply(system: str, user: str) -> str:
     return "query"
 
 
-async def fake_chat_stream(model, messages, tools=None, max_tokens=None, temperature=None):
+async def fake_chat_stream(model, messages, tools=None, max_tokens=None, temperature=None,
+                          first_token=None):
     """Stand in for the one seam every provider shares."""
     captured["model"] = model
     captured["tools"] = tools

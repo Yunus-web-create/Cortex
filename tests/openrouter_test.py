@@ -81,9 +81,15 @@ kept = [m["id"] for m in router._clean(CAT)]
 check("only :free models survive", kept == [FREE_A["id"], FREE_B["id"], FREE_C["id"]], str(kept))
 check("paid models are never candidates",
       "anthropic/claude-sonnet-5.5" not in router.candidates("general", CAT, limit=5))
-check("routing prefers the strongest free model",
-      router.candidates("general", CAT, limit=1) == [FREE_A["id"]],
+# Deliberate: a 550B free model in a shared queue turned a one-line question into a
+# 99-second turn (seen in production), so the everyday task starts with the fast
+# free model and keeps the heavyweight as a fallback.
+check("routing starts with the fast free model",
+      router.candidates("general", CAT, limit=1) == [FREE_B["id"]],
       str(router.candidates("general", CAT, limit=1)))
+check("the heavyweight is still in the chain",
+      FREE_A["id"] in router.candidates("general", CAT, limit=5),
+      str(router.candidates("general", CAT, limit=5)))
 check("code uses the code-specialised free model",
       router.candidates("code", CAT, limit=1) == [FREE_C["id"]],
       str(router.candidates("code", CAT, limit=1)))

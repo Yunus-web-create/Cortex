@@ -14,36 +14,41 @@ from . import gateway
 # Ordered preference per task. The first available id wins; the rest become
 # fallbacks if the provider errors.
 PREFERENCE = {
+    # Fast-first: a 550B free model sitting in a shared queue is what turned a
+    # one-line question into a 99-second wait. The big models stay in the chain
+    # as fallbacks, where they only run if the quick ones are busy.
     "reasoning": [
-        "nvidia/nemotron-3-ultra-550b-a55b:free", "thinkingmachines/inkling:free",
-        "minimax/minimax-m3.1-flash:free",
+        "thinkingmachines/inkling:free", "minimax/minimax-m3.1-flash:free",
+        "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free",
         "openai/gpt-6.1-sol", "anthropic/claude-opus-5.5", "openai/gpt-6-sol",
         "google/gemini-3.6-flash", "google/gemini-3.5-flash", "google/gemini-4-argon",
         "openai/gpt-5.6-sol", "spacexai/grok-4.20-reasoning",
         "deepseek/deepseek-v4.1-flash", "anthropic/claude-sonnet-5.5",
     ],
     "code": [
-        "cohere/north-mini-code:free", "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "minimax/minimax-m3.1-flash:free",
+        "cohere/north-mini-code:free", "poolside/laguna-s-2.1:free",
+        "minimax/minimax-m3.1-flash:free", "nvidia/nemotron-3-ultra-550b-a55b:free",
         "openai/gpt-5.3-codex", "openai/gpt-5.1-codex-max", "openai/gpt-5.2-codex",
         "anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5",
         "alibaba/qwen3-coder-next", "mistral/codestral",
         "google/gemini-3.6-flash", "google/gemini-3.5-flash", "google/gemini-3.8-flash",
     ],
     "general": [
-        "nvidia/nemotron-3-ultra-550b-a55b:free", "minimax/minimax-m3.1-flash:free",
+        "minimax/minimax-m3.1-flash:free", "nvidia/nemotron-3.5-lightning:free",
         "thinkingmachines/inkling:free", "openrouter/free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
         "anthropic/claude-sonnet-5.5", "openai/gpt-5.5", "google/gemini-3.6-flash",
         "google/gemini-3.5-flash", "spacexai/grok-4.3", "deepseek/deepseek-v4-pro",
         "google/gemini-3.8-flash", "openai/gpt-5.4-mini",
     ],
     "creative": [
-        "thinkingmachines/inkling:free", "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "thinkingmachines/inkling:free", "minimax/minimax-m3.1-flash:free",
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
         "anthropic/claude-opus-5.5", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5",
         "google/gemini-3.6-flash", "openai/gpt-5.5", "google/gemini-3.5-flash",
     ],
     "fast": [
-        "minimax/minimax-m3.1-flash:free", "nvidia/nemotron-3.5-lightning:free",
+        "nvidia/nemotron-3.5-lightning:free", "minimax/minimax-m3.1-flash:free",
         "google/gemini-3.5-flash-lite", "openai/gpt-5.4-nano", "anthropic/claude-haiku-5.5",
         "deepseek/deepseek-v4.1-flash", "google/gemini-3.6-flash", "google/gemini-3.5-flash",
     ],

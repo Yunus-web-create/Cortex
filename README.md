@@ -29,7 +29,42 @@ one message → classify the task → pick the best available model → answer w
 | **Makes media** | Text→image, text→speech, text→video — all with free routes. Artefacts are stored per conversation, shown inline, and re-playable. |
 | **Calls APIs** | 14 built-in tools including weather, Wikipedia, URL fetch, web search, arithmetic and the clock — plus any host you add with a credential. |
 
-![Routing and model menu](docs/models-menu.png)
+![A conversation in Cortex](docs/ui-answer.png)
+
+### The interface
+
+It looks and behaves like the assistants you already use, because that costs nothing and saves
+explaining: a 264 px rail with your chats and *New chat*, a 760 px reading column, your message in a
+right-aligned bubble, and the answer as plain text with a small avatar. Everything the assistant did
+on the way — searches, page reads, calculations, code runs — collapses into a single quiet line above
+the answer ("Searched the web · 2 steps"), expanded only if you want it. Sources are one collapsed
+row. The footer is three words: model, latency, cost.
+
+Answers are written the same way: the answer first, in prose, with no "Certainly! Here's…" preamble
+and no headings for a three-sentence reply. Lists appear when the content is a list. Citations are
+`[1]`-style numbers that point at the passages under the reply, never raw markup.
+
+Light and dark both use neutral greys (`#fff`/`#212121` and `#212121`/`#ececec`) rather than a brand
+colour, so long answers are easy to read. On a phone the rail becomes a drawer, the header drops to
+five controls, and the composer stays thumb-height.
+
+![Dark theme](docs/ui-empty-dark.png)
+
+---
+
+### Why a turn starts in about a second
+
+Three things used to happen *before* the model saw the question, and none of them had to:
+
+| Was | Now |
+| --- | --- |
+| six web pages read one at a time (15–25 s) | read concurrently under a 7 s budget; snippets fill any gap |
+| a query-expansion model call on an empty knowledge base (10 s) | skipped when there is no corpus, capped at 3.5 s when there is |
+| a follow-up-title model call holding the turn open (up to a minute) | capped at 4 s, and the answer is rendered before it runs |
+
+Questions that don't depend on today's facts ("what does a barometer measure", "write a haiku")
+skip the web pre-fetch entirely; the model can still call `deep_research` itself if it turns out to
+need it. Measured locally: weather turn 12.4 s total, factual question with sources 5–8 s.
 
 ---
 
@@ -320,16 +355,20 @@ Full list in `app/main.py`; the SSE contract is stable enough to drive your own 
 ```bash
 python tests/smoke_test.py        # 50 — end-to-end HTTP with a faked provider seam
 python tests/tools_test.py        # 34 — tool executors, SSRF, allowlist, secret masking
-python tests/agent_loop_test.py   # 20 — tool loop: replay, round cap, failures, unknown tool
+python tests/agent_loop_test.py   # 29 — tool loop: replay, round cap, failures, unknown tool
 python tests/free_test.py         # 19 — provider pool, failover, free media routing (offline)
 python tests/gemini_test.py       # 32 — Google free tier, quota vs billing, signatures, parking
 python tests/openrouter_test.py   # 22 — $0 key routes to free models only, credit flips it back
 python tests/auth_test.py         # 38 — login page, cookie flags, open-redirect guard, Basic, logout
 python tests/tooltext_test.py     # 28 — tool calls written as text: parsing, chunk splits, no false positives
-python tests/speed_test.py        # 18 — stalled streams abandoned, 429 reset windows, no false timeouts
+python tests/speed_test.py        # 21 — stalled streams abandoned, page reads time-boxed, no false timeouts
 python tests/provider_order_test.py  # 4 — a $0 OpenRouter key never leads a turn
+python tests/failover_pin_test.py # 5 — a pinned model is not carried into another provider
 python tests/eval_retrieval.py    # retrieval quality on a golden set
 ```
+
+Last full run: **283 checks, 0 failures.** (280 before the UI pass; `speed_test` gained three checks
+for the new pre-fetch budget.)
 
 Retrieval numbers on the bundled corpus (49 chunks, 18 golden questions):
 

@@ -189,7 +189,7 @@ function msgShell(role) {
   wrap.className = `msg ${role}`;
   wrap.innerHTML = `
     <div class="msg-avatar">${role === "assistant"
-      ? `<svg viewBox="0 0 64 64"><path d="M32 14a18 18 0 1 0 12.7 5.3"/><circle cx="32" cy="32" r="5"/></svg>`
+      ? `<svg viewBox="0 0 64 64"><path d="M32 13a19 19 0 1 0 13.4 5.6" fill="none" stroke="currentColor" stroke-width="6"/><circle cx="32" cy="32" r="5" fill="currentColor" stroke="none"/></svg>`
       : "You"}</div>
     <div class="msg-body">
       <div class="msg-head">
@@ -215,7 +215,7 @@ function addUserMessage(text) {
 function addAssistantMessage() {
   const wrap = msgShell("assistant");
   const content = wrap.querySelector(".msg-content");
-  content.innerHTML = `<div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="think-label">Searching your knowledge base…</span></div>`;
+  content.innerHTML = `<div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="think-label">Thinking…</span></div>`;
   wrap.classList.add("streaming");
   wrap._buffer = "";
   wrap._sources = [];
@@ -243,9 +243,12 @@ function streamRender(wrap) {
 }
 
 function finalizeAssistant(wrap, { stopped = false } = {}) {
+  if (wrap._finalized) return;          // `done` and the stream close both fire
+  wrap._finalized = true;
   const content = wrap.querySelector(".msg-content");
   content.innerHTML = md(wrap._buffer) || (stopped ? "<p><em>Stopped.</em></p>" : "");
   wrap.classList.remove("streaming");
+  finishActivity(wrap);
   if (stopped && wrap._buffer) content.insertAdjacentHTML("beforeend", `<p class="muted-sm"><em>Stopped by you.</em></p>`);
   renderSources(wrap);
   renderMeta(wrap);
@@ -314,12 +317,14 @@ function renderSources(wrap) {
       ${pg ? `<span class="pg">${pg}</span>` : ""}
     </button>`;
   }).join("");
+  const openByDefault = sources.length <= 3;
   box.innerHTML = `
-    <button class="src-head open" data-toggle="sources">
+    <button class="src-head${openByDefault ? " open" : ""}" data-toggle="sources">
       <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
       ${sources.length} source${sources.length > 1 ? "s" : ""}
     </button>
-    <div class="src-list">${chips}</div>`;
+    <div class="src-list"${openByDefault ? "" : ' style="display:none"'}></div>`;
+  box.querySelector(".src-list").innerHTML = chips;
   box.querySelector("[data-toggle]").onclick = (e) => {
     const btn = e.currentTarget;
     btn.classList.toggle("open");
@@ -343,29 +348,74 @@ const TOOL_ICONS = {
   fetch_url: '<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
 };
 
-function toolCard(wrap, name, label, argsText) {
-  const activity = wrap.querySelector(".tool-activity") || (() => {
-    const box = document.createElement("div");
-    box.className = "tool-activity";
-    wrap.querySelector(".msg-body").insertBefore(box, wrap.querySelector(".msg-content"));
-    return box;
-  })();
-  const card = document.createElement("div");
-  card.className = "tool-card";
-  card.dataset.tool = name;
-  card.innerHTML = `
-    <button class="tool-card-head" type="button">
-      <span class="tool-spin"></span>
-      <svg class="tc-ico" viewBox="0 0 24 24">${TOOL_ICONS[name] || '<circle cx="12" cy="12" r="9"/>'}</svg>
-      <span class="tc-label">${esc(label || name)}</span>
-      <span class="tc-args">${esc(argsText || "")}</span>
-      <span class="tc-state">running</span>
-      <svg class="tc-chev" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M9 6l6 6-6 6"/></svg>
+const ACTIVITY_VERBS = {
+  web_search: "Searched the web",
+  deep_research: "Researched the web",
+  fetch_url: "Read a page",
+  wikipedia: "Checked Wikipedia",
+  weather: "Checked the weather",
+  calculator: "Did the maths",
+  current_datetime: "Checked the time",
+  write_file: "Wrote a file",
+  read_file: "Read a file",
+  list_files: "Listed files",
+  run_code: "Ran code",
+  generate_image: "Made an image",
+  text_to_speech: "Made audio",
+  generate_video: "Made a video",
+};
+
+function activityBox(wrap) {
+  let box = wrap.querySelector(".activity");
+  if (box) return box;
+  box = document.createElement("div");
+  box.className = "activity";
+  box.innerHTML = `
+    <button type="button" class="activity-head" aria-expanded="false">
+      <span class="a-ico"><span class="a-spin"></span></span>
+      <span class="a-label">Working…</span>
+      <svg class="a-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
     </button>
-    <div class="tool-card-body"></div>`;
-  card.querySelector(".tool-card-head").onclick = () => card.classList.toggle("open");
-  activity.appendChild(card);
-  return card;
+    <div class="activity-body"></div>`;
+  box.querySelector(".activity-head").onclick = () => {
+    const open = box.classList.toggle("open");
+    box.querySelector(".activity-head").setAttribute("aria-expanded", String(open));
+  };
+  wrap._verbs = new Set();
+  const content = wrap.querySelector(".msg-content");
+  wrap.querySelector(".msg-body").insertBefore(box, content);
+  return box;
+}
+
+function refreshActivityHeader(wrap) {
+  const box = wrap.querySelector(".activity");
+  if (!box) return;
+  const verbs = [...(wrap._verbs || [])];
+  const label = box.querySelector(".a-label");
+  if (verbs.length === 0) label.textContent = "Working…";
+  else if (verbs.length === 1) label.textContent = verbs[0];
+  else label.textContent = `${verbs[0]} · ${wrap._steps} step${wrap._steps > 1 ? "s" : ""}`;
+}
+
+function toolCard(wrap, name, label, argsText) {
+  const box = activityBox(wrap);
+  wrap._steps = (wrap._steps || 0) + 1;
+  const verb = ACTIVITY_VERBS[name] || `Used ${label || name}`;
+  wrap._verbs.add(verb);
+  const step = document.createElement("div");
+  step.className = "step running";
+  step.dataset.tool = name;
+  step.innerHTML = `
+    <button class="s-head" type="button">
+      <span class="s-dot"></span>
+      <span class="s-name">${esc(label || name)}</span>
+      <span class="s-arg">${esc(argsText || "")}</span>
+    </button>
+    <div class="s-body"></div>`;
+  step.querySelector(".s-head").onclick = () => step.classList.toggle("open");
+  box.querySelector(".activity-body").appendChild(step);
+  refreshActivityHeader(wrap);
+  return step;
 }
 
 function describeArgs(props) {
@@ -376,16 +426,14 @@ function describeArgs(props) {
 
 function completeToolCard(card, data) {
   if (!card) return;
-  card.querySelector(".tool-spin")?.remove();
-  const state = card.querySelector(".tc-state");
-  const body = card.querySelector(".tool-card-body");
+  const wrap = card.closest(".msg");
+  card.classList.remove("running");
   const r = data.result || {};
   const ok = data.ok && !r.error;
-  state.textContent = ok ? "done" : "failed";
-  state.className = "tc-state " + (ok ? "ok" : "err");
+  card.classList.add(ok ? "ok" : "err");
   let html = "";
   if (r.error) {
-    html = `<div style="color:var(--danger)">${esc(r.error)}</div>`;
+    html = `<span style="color:var(--danger)">${esc(r.error)}</span>`;
   } else if (r.results) {
     const rows = r.results.slice(0, 4);
     html = `<div>${rows.length} result${rows.length === 1 ? "" : "s"}${r.summary ? " · has summary" : ""}</div><ul>` +
@@ -407,10 +455,26 @@ function completeToolCard(card, data) {
     html = `<div><strong>${esc(r.title || "")}</strong></div><div>${esc(r.extract)}</div>`;
   } else if (r.chars !== undefined) {
     html = `${esc(String(r.status || ""))} · ${esc(String(r.chars))} characters from <code>${esc((r.url || "").slice(0, 60))}</code>`;
+  } else if (r.written) {
+    html = `Saved <code>${esc(r.path || "")}</code>`;
+  } else if (r.exit !== undefined) {
+    html = `<code>${esc(String(r.command || ""))}</code> → exit ${esc(String(r.exit))}`;
   } else {
     html = esc(JSON.stringify(r).slice(0, 240));
   }
-  body.innerHTML = html;
+  card.querySelector(".s-body").innerHTML = html;
+  if (wrap) refreshActivityHeader(wrap);
+}
+
+function finishActivity(wrap) {
+  const box = wrap && wrap.querySelector(".activity");
+  if (!box) return;
+  box.querySelector(".a-spin")?.remove();
+  const ico = box.querySelector(".a-ico");
+  if (ico && !ico.querySelector("svg")) {
+    ico.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>`;
+  }
+  refreshActivityHeader(wrap);
 }
 
 function renderMedia(wrap, item) {
@@ -510,30 +574,35 @@ function renderWarning(wrap) {
 }
 
 function renderMeta(wrap) {
-  const old = wrap.querySelector(".answer-meta");
-  if (old) old.remove();
+  wrap.querySelector(".answer-meta")?.remove();
   const m = wrap._meta || {};
   if (!m.model && !m.latency_ms) return;
   const bits = [];
   if (m.demo) bits.push(`<span class="warnish">demo mode</span>`);
-  else if (m.model) bits.push(esc(m.model.replace("claude-", "")));
+  else if (m.model) bits.push(esc(modelLabel(m.model)));
   if (m.latency_ms) bits.push(`${(m.latency_ms / 1000).toFixed(1)}s`);
-  if (m.input_tokens || m.output_tokens) bits.push(`${fmtNum(m.input_tokens)} in · ${fmtNum(m.output_tokens)} out`);
-  if (m.provider) bits.push(esc(m.provider));
   if (m.cost_usd) bits.push(`$${(+m.cost_usd).toFixed(4)}`);
-  else if (m.tier === "free" || state.health?.llm?.free_tier) bits.push(`<span class="okish">free tier</span>`);
-  const cites = wrap.querySelectorAll(".msg-content .cite").length;
-  const toolCalls = wrap._toolCallsUsed || 0;
-  if (toolCalls && !cites) {
-    bits.push(`${toolCalls} tool call${toolCalls > 1 ? "s" : ""}`);
-  } else if (m.citations) {
-    bits.push(`${m.citations} source${m.citations > 1 ? "s" : ""}`);
-  }
+  else if (m.tier === "free" || state.health?.llm?.free_tier) bits.push(`<span class="okish">free</span>`);
   if (!bits.length) return;
   const div = document.createElement("div");
   div.className = "answer-meta";
   div.innerHTML = bits.join(`<span class="sep"></span>`);
   wrap.querySelector(".msg-body").appendChild(div);
+}
+
+/* "google/gemini-3.6-flash" -> "gemini-3.6-flash", but prefer the human name the
+   server already publishes for that id, and never print a bare vendor segment. */
+function modelLabel(id) {
+  const catalog = (state.modelCatalog && state.modelCatalog.models) || state.models || state.health?.models || [];
+  const hit = catalog.find((x) => x.id === id);
+  if (hit && hit.label) return hit.label;
+  const parts = String(id).split("/").filter(Boolean);
+  const tail = parts[parts.length - 1] || String(id);
+  // "demo/model" or "x/default" would read as the word "model"; fall back to the
+  // full id so the footer always says something identifiable.
+  const generic = ["model", "default", "chat", "completions", "v1"];
+  if (parts.length > 1 && generic.includes(tail.toLowerCase())) return parts.join("/");
+  return tail;
 }
 
 function openSource(wrap, idx, rect) {
@@ -730,10 +799,14 @@ async function send(text, { regenerate = false } = {}) {
         streamRender(wrap);
       } else if (ev === "route") {
         wrap._meta = wrap._meta || {};
+        // `data.provider` is the provider's display label; the model id arrives as `model`.
+        // The old assignment read `.model` off the route payload but stored it under
+        // `provider`, so the footer printed the literal word "model".
         wrap._meta.model = data.model;
         wrap._meta.task = data.task;
         wrap._meta.why = data.why;
-        wrap._meta.provider = data.provider;
+        wrap._meta.provider = "";
+        wrap._meta.providerLabel = data.provider;
         const pill = wrap.querySelector(".msg-who, .msg-name");
         if (pill && data.model) pill.dataset.model = data.model;
       } else if (ev === "media") {
@@ -765,9 +838,12 @@ async function send(text, { regenerate = false } = {}) {
       } else if (ev === "error") {
         wrap._error = data.message;
       } else if (ev === "done") {
+        // merge the server's final numbers first, then render immediately instead of
+        // waiting for the socket to close — nothing after `done` can make it look unfinished
         if (data.conversation_id) state.convId = data.conversation_id;
         if (data.meta) wrap._meta = { ...wrap._meta, ...data.meta };
-        if (data.message_id) wrap._meta.message_id = data.message_id;
+        if (data.message_id) wrap._meta = { ...wrap._meta, message_id: data.message_id };
+        if (!wrap._finalized) finalizeAssistant(wrap);
       }
     });
   } catch (e) {
@@ -891,7 +967,7 @@ function renderDocs() {
   }
   el.docListMeta.textContent = docs.length ? `${docs.length} document${docs.length > 1 ? "s" : ""} · ${totalChunks} passages` : "";
   el.kbDocs.textContent = docs.length;
-  el.docCount.textContent = docs.length;
+  setCount(el.docCount, docs.length);
   el.kbMeta.textContent = docs.length ? `${docs.length} doc${docs.length > 1 ? "s" : ""} · ${fmtNum(totalChunks)} passages` : "No documents yet";
   // drop scoped ids that no longer exist
   if (state.docScope) {
@@ -1102,6 +1178,22 @@ function currentModelLabel() {
   return opt ? opt.label : String(id).split("/").pop();
 }
 
+/* A fixed-position panel needs coordinates. Anchor it under its button, right
+   aligned, and flip it above when there isn't room below. */
+function placePopmenu(menu, anchor) {
+  if (!menu || !anchor) return;
+  const r = anchor.getBoundingClientRect();
+  const w = menu.offsetWidth || 320;
+  const h = menu.offsetHeight || 420;
+  let left = r.right - w;
+  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.right = "auto";
+}
+
 function renderModelMenu(filter = "") {
   const box = $("#modelList");
   if (!box) return;
@@ -1279,6 +1371,17 @@ function openSettings() {
       : h.llm?.key_kind === "vercel-token (catalogue only)"
         ? "Catalogue-only token: models listed, inference needs a gateway key"
         : "No model provider — demo mode"}`;
+  // keep the picker in step with the provider that is actually answering, so the
+  // form cannot say "Vercel" while the status line above says "google"
+  const psel = $("#providerSelect");
+  if (psel) {
+    const active = String(h.llm?.provider || "").toLowerCase().trim();
+    // the health endpoint reports short names ("google"); accept its label form too
+    const known = ["gateway", "openrouter", "openai", "groq", "deepseek", "google",
+                   "together", "ollama", "custom"];
+    const hit = known.find((k) => active === k || active.startsWith(k));
+    if (hit) psel.value = hit;
+  }
   $("#apiKey").value = "";
   $("#orgInput").value = state.settings.org || "";
   const ks = $("#knowledgeSelect");
@@ -1471,49 +1574,46 @@ async function saveSecrets(entries) {
 }
 
 /* ─────────────────────────── status / banner ───────────────────── */
+function setCount(node, n) {
+  if (!node) return;
+  node.textContent = n > 0 ? String(n) : "";
+  node.hidden = !n;
+}
+
 function updateStatusLine() {
   const h = state.health;
   if (!h) return;
+  // The header shows the model and, only when something is actually wrong, a
+  // warning. Everything else (tool count, retrieval mode, documents) lives in
+  // Settings — a chat window should not read like a dashboard.
+  if (!h.llm?.configured) {
+    el.statusLine.textContent = "demo mode — add a key in Settings";
+    return;
+  }
   const model = (h.models || []).find((m) => m.id === state.settings.model);
-  const bits = [model ? model.label : state.settings.model];
-  const tools = (h.tools || []).length;
-  if (tools) bits.push(`${tools} tools`);
-  bits.push(h.embeddings?.semantic ? "hybrid retrieval" : "keyword retrieval");
-  bits.push(`${state.docs.length} doc${state.docs.length === 1 ? "" : "s"}`);
-  if (!h.llm?.configured) bits.push("no model key");
-  const narrow = window.innerWidth < 720;
-  const modelLabel = model ? model.label : state.settings.model;
-  const statusBits = narrow
-    ? [modelLabel, `${state.docs.length} doc${state.docs.length === 1 ? "" : "s"}`]
-    : bits;
-  el.statusLine.innerHTML = `<span class="sdot ${h.llm?.configured ? "" : "warn"}"></span><span class="stext">${esc(statusBits.join(" · "))}</span>`;
-  el.modeBadge.hidden = !!h.llm?.configured;
-  el.modeBadge.textContent = h.llm?.configured ? "" : "demo mode";
+  const bits = [];
+  bits.push(model && state.settings.model !== "auto" ? model.label : "auto");
+  if (h.llm?.free || h.llm?.free_tier) bits.push("free");
+  el.statusLine.textContent = bits.join(" · ");
+  el.modeBadge.hidden = true;
 }
 
 function updateBanner() {
   const h = state.health;
   if (!h) return;
+  const hide = () => { el.banner.hidden = true; };
   if (h.llm?.configured && (h.llm?.free || h.llm?.free_tier)) {
+    // Informative, not promotional: it explains why nothing is billed.
     el.banner.hidden = false;
-    const tail = h.llm?.local ? " A local model is the last-resort fallback." : "";
     el.bannerText.innerHTML = h.llm?.free
-      ? "<strong>Free mode.</strong> No account, no card, no bill." +
-        "<span class=\"hide-sm\"> Text, images, voices, video, web research and the code " +
-        "workspace all run on free routes.</span>" + (tail ? `<span class="hide-sm">${tail}</span>` : "")
-      : "<strong>Free tier.</strong> No card, no bill on this plan." +
-        "<span class=\"hide-sm\"> If it runs out of quota, the free routes and the local model " +
-        "take over.</span>" + (tail ? `<span class="hide-sm">${tail}</span>` : "");
-    el.bannerAction.hidden = false;
-    el.bannerAction.textContent = "Frontier models";
-    el.bannerAction.onclick = openSettings;
+      ? "Free mode — no account, no card, nothing billed."
+      : "Free tier — no card, nothing billed on this plan.";
+    el.bannerAction.hidden = true;
     return;
   }
   if (!h.llm?.configured) {
     el.banner.hidden = false;
-    el.bannerText.innerHTML = window.innerWidth < 720
-      ? `<strong>Demo mode.</strong> Add an API key for synthesised answers.`
-      : `<strong>Demo mode.</strong> Retrieval, citations and <b>live tool calls</b> all run for real; model-written answers need an API key (Settings → Model provider).`;
+    el.bannerText.innerHTML = "Demo mode — retrieval and tools work; answers need a model key.";
     el.bannerAction.hidden = false;
     el.bannerAction.textContent = "Add key";
     el.bannerAction.onclick = openSettings;
@@ -1521,13 +1621,13 @@ function updateBanner() {
   }
   if (!h.embeddings?.semantic && h.stats?.documents > 0) {
     el.banner.hidden = false;
-    el.bannerText.innerHTML = `<strong>Keyword-only retrieval.</strong> The embedding model isn't available, so semantic search is off.`;
+    el.bannerText.innerHTML = "Keyword-only search — the embedding model isn't available.";
     el.bannerAction.hidden = false;
     el.bannerAction.textContent = "Details";
     el.bannerAction.onclick = openSettings;
     return;
   }
-  el.banner.hidden = true;
+  hide();
 }
 
 async function refreshHealth() {
@@ -1565,11 +1665,21 @@ async function loadSuggestions(force = false) {
         send(q);
       };
     } else {
-      $("#starter").hidden = true;
-    }
-    if (!state.docs.length) {
-      $("#emptySub").textContent = "Answers come from the live web and the built-in tools; your files " +
-        "are an optional extra layer. Try the demo knowledge base, upload your own, or just ask something.";
+      // no documents yet: offer the four things this assistant is actually good at
+      const ideas = [
+        ["Search the web for today's load-shedding schedule in Rustenburg", "live web"],
+        ["Write and run a Python script that charts my CSV", "code workspace"],
+        ["Make a 1024px poster for a coffee pop-up called First Light", "image"],
+        ["Explain compound interest like I'm 15", "explanation"],
+      ];
+      el.starterGrid.innerHTML = ideas.map(([q, tag]) =>
+        `<button class="starter-card"><span class="q">${esc(q)}</span>` +
+        `<span class="tag">${esc(tag)}</span></button>`).join("");
+      $("#starter").hidden = false;
+      el.starterGrid.onclick = (e) => {
+        const card = e.target.closest(".starter-card");
+        if (card) send(card.querySelector(".q").textContent.trim());
+      };
     }
     $("#heroDemo").hidden = false;
     const noDocs = state.docs.length === 0;
@@ -1578,7 +1688,7 @@ async function loadSuggestions(force = false) {
       ? `<svg viewBox="0 0 24 24" class="i"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg> Upload documents`
       : `<svg viewBox="0 0 24 24" class="i"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg> Add documents`;
     $("#emptySub").textContent = noDocs
-      ? "Answers come from the live web and the built-in tools; your files are an optional extra layer. Start with the demo knowledge base or just ask something."
+      ? "Ask anything: it searches the live web, reads your files, writes and runs code, and makes images, audio and video."
       : `The live web plus ${state.docs.length} document${state.docs.length > 1 ? "s" : ""} ` +
         `(${fmtNum(state.docs.reduce((a, d) => a + (d.n_chunks || 0), 0))} passages) are both in play. Ask anything.`;
   } catch {}
@@ -1697,7 +1807,11 @@ function wire() {
     e.stopPropagation();
     const menu = $("#modelMenu");
     menu.hidden = !menu.hidden;
-    if (!menu.hidden) { renderModelMenu($("#modelFilter").value); $("#modelFilter").focus(); }
+    if (!menu.hidden) {
+      renderModelMenu($("#modelFilter").value);
+      placePopmenu(menu, $("#modelBtn"));
+      $("#modelFilter").focus();
+    }
   };
   $("#modelFilter").oninput = (e) => renderModelMenu(e.target.value);
   document.addEventListener("click", (e) => {

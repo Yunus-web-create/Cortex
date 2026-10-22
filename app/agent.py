@@ -15,14 +15,24 @@ import asyncio
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from . import config, gateway, llm, router, tools, web
+from .tooltext import ToolTextFilter
 
 log = logging.getLogger("cortex.agent")
 
 MAX_ROUNDS = int(getattr(config, "TOOL_MAX_ROUNDS", 4))
+# How long to wait for the first byte of an answer before trying a different model.
+# A free endpoint can sit in a shared queue indefinitely; this is the difference
+# between "thinking" and "broken".
+PATIENCE = {"reasoning": 45.0, "code": 25.0, "creative": 30.0, "vision": 30.0}
+PATIENCE_DEFAULT = float(getattr(config, "FIRST_TOKEN_TIMEOUT", 20.0))
+# Total wall-clock budget for a turn, tool rounds included. After this the model is
+# asked to answer with what it already has instead of starting another round.
+TURN_BUDGET = float(getattr(config, "TURN_BUDGET", 75.0))
 _CITE_FIX = re.compile(r"[\u3010\uff3b](\d{1,2})[\u3011\uff3d]")
 _LOCAL_IMG = re.compile(r"!\[[^\]]*\]\((?!https?:)[^)]*\)")
 _FILE_LINK = re.compile(r"\[[^\]]*\.(?:mp4|mov|webm|png|jpe?g|webp|mp3|wav|ogg)\]", re.I)
@@ -36,35 +46,56 @@ _MEDIA_BRACE = re.compile(
 # and sometimes add a stage direction under it
 _STAGE = re.compile(r"^\s*[*_]{1,2}\(?\s*(?:listen|watch|view|play|see)\s+below\s*\)?[*_]{1,2}\s*$", re.I | re.M)
 
-BASE_SYSTEM = """You are Cortex, an expert assistant for {org}.
+BASE_SYSTEM = """You are Cortex, an assistant for {org}.
 
-You are not limited to uploaded documents. You have a live internet connection
-(research and fetch tools) and a code workspace where you can write and run
-real programs. Use whatever combination answers the question best.
+You are not limited to uploaded documents. You can search the live internet and
+you have a code workspace where you can write and run real programs. Reach for
+those when the question needs them, then answer plainly.
 
-How to answer:
-- Answer the question directly in the first line, then support it. Use short
-  paragraphs or bullets. Bold the key facts. No filler openers.
-- When a claim comes from a source passage, cite it with its bracketed number,
-  e.g. [1] or [2][3], placed right after the claim. Use plain ASCII square
-  brackets — never full-width 【1】 or ［1］. A version number, date or price that
-  appears nowhere in the sources is a warning sign: check before you write it.
-- When a claim comes from your own knowledge, or from a tool whose output has no
-  numbered source, don't attach a citation - say where it came from instead
-  ("per open-meteo", "from the search results").
-- If you're not confident, say so and name what would settle it. Never invent a
-  fact, a file, a URL, a library or a tool result.
-- Your training data may be older than the date below. For anything that changes —
-  versions, prices, releases, who holds a role, "latest" — the sources beat your
-  memory. If the sources say a number, use theirs, not the one you remember.
-- Prefer live data over memory for anything that changes: prices, releases,
-  versions, news, "latest", "current", who-holds-what, today's date.
-- For code: write complete, runnable files with the workspace tools, then run
-  them to check. Report what actually happened when you ran it, including
-  errors. Never claim a test passed unless you saw it pass.
+Voice
+- Write like a knowledgeable person talking to a colleague: direct, warm, calm.
+  Not a press release, not a lecture. Contractions are fine.
+- Answer first. The opening sentence should answer the question; context comes
+  after. Never open with "Great question", "Certainly", "I'd be happy to", or a
+  restatement of what was asked.
+- Match the size of the answer to the question. A simple question gets a few
+  sentences, not headings and bullet lists. Go long only when the subject
+  genuinely has parts, and then use structure to make it scannable.
+- Prefer prose. Use a list only when the content is really a list (steps,
+  options, sources). Use a heading only when the answer has three or more
+  sections, and never nest more than one level.
+- Bold sparingly — a few key terms, not every other phrase. No emoji unless the
+  person used them first.
+- Do not narrate your process, in any tense. "I'll check the current conditions",
+  "I searched", "let me look that up" and "I'll use the tool" are all the same
+  mistake: the tool line above the answer already says what ran. Open with the
+  substance. If the first thing you know is that it is 32 °C in Rustenburg, say
+  that, not that you are about to find out.
+- Finish when the answer is finished. No summary paragraph, no "let me know if
+  you need anything else", no question-for-the-sake-of-it.
+- Keep the first line tight. Roughly: answer, then support, then stop. Offer a next step only
+  when it is genuinely useful.
 
-Formatting: markdown. Fenced code blocks with a language tag. No tables unless
-they genuinely help comparison.
+Accuracy
+- Cite a source with its numbered bracket, e.g. [1] or [2][3], only when the
+  claim comes from a numbered passage, and place it right after the claim. Use
+  plain ASCII brackets — never full-width 【1】.
+- Statements from your own knowledge, or from a tool whose output has no
+  numbered source, get no bracket; name where it came from in words instead
+  ("per open-meteo", "from the search results") only if it matters.
+- Your training data may be older than the date below. For anything that
+  changes — prices, versions, releases, who holds a role, "latest", "today" —
+  trust the sources over your memory.
+- If you are unsure, say what you are unsure about and what would settle it.
+  Never invent a fact, a URL, a file, a library or a tool result.
+
+Code
+- Write complete, runnable files with the workspace tools, then run them.
+- Report what actually happened, including errors. Never claim a test passed
+  unless you saw it pass.
+
+Formatting: markdown. Fenced code blocks with a language tag. Tables only for
+comparing things side by side.
 {extra}"""
 
 TOOL_GUIDANCE = """
@@ -79,13 +110,24 @@ Tool notes:
 - generate_image, text_to_speech and generate_video create real media that is
   shown to the user in the chat automatically. Use them when the user asks for
   media, and never embed the result as markdown - just say it is ready.
+- Don't search for things that don't change: definitions, how something works,
+  well-known history, arithmetic, explanations. Answer from what you know and
+  keep the turn fast.
+- Search when the answer depends on something current or local - news, prices,
+  schedules, versions, releases, who holds a role, "today", "latest", "near me",
+  or a fact you are genuinely unsure of.
 - Never call a tool to "look something up" that you already answered above.
+- One or two searches is normally enough. If two searches and a page fetch still
+  have not settled it, answer with what you have and say what is uncertain -
+  do not keep searching round after round.
+- Ask for tools through the tool interface only. Never write tool syntax, XML
+  tags or JSON calls into your answer text.
 """
 
 STRICT_EXTRA = ("- STRICT MODE: answer only from the numbered sources. If they don't cover it, say so "
-                "and stop. Tools may be used to check a fact, not to introduce new topics.")
-LOOSE_EXTRA = ("- You may answer from your own knowledge when sources don't cover the question. "
-               "Label those parts '(general knowledge)' if the distinction matters.")
+                "briefly and stop. Tools may be used to check a fact, not to introduce new topics.")
+LOOSE_EXTRA = ("- When the sources don't cover the question, answer from your own knowledge. No need to "
+               "label it unless the distinction is the point.")
 
 MEDIA_TOOLS = {"generate_image", "text_to_speech", "generate_video"}
 
@@ -300,16 +342,26 @@ async def stream(question: str, sources: list[dict], history: list[dict], *, con
             yield ev
         return
 
+    dropped_pin = False
     for i, p in enumerate(chain):
         token = gateway.push_provider(p)
         failed = None
+        # A pinned model id belongs to one provider's catalogue. Carrying it into the
+        # next provider produced "model … is not found" 404s; after the first provider
+        # the turn re-routes itself instead.
+        attempt_model = model if (i == 0 or not model) else None
+        if i > 0 and model and not dropped_pin:
+            dropped_pin = True
+            yield {"type": "notice", "message": (
+                f"{gateway.provider_label(p)} does not serve {model.split('/')[-1]} — "
+                "letting it pick its own best model for this turn.")}
         try:
             for attempt in range(2):        # one quick retry before giving up on a provider
                 produced = False
                 touched = False
                 failed = None
                 async for ev in _stream_impl(question, sources, history, conv_id=conv_id,
-                                             model=model, strict=strict, org=org, specs=specs,
+                                             model=attempt_model, strict=strict, org=org, specs=specs,
                                              knowledge=knowledge, has_image=has_image,
                                              _reentered=_reentered):
                     kind = ev.get("type")
@@ -381,7 +433,7 @@ async def _stream_impl(question: str, sources: list[dict], history: list[dict], 
     yield {"type": "route", "model": decision["model"], "task": decision["task"],
            "why": decision.get("why", ""), "requested": decision.get("requested", "auto"),
            "provider": gateway.provider_label(gateway.active_provider()),
-           "free": gateway.is_free(), "free_tier": gateway.free_tier()}
+           "free": gateway.free_tier(), "free_tier": gateway.free_tier()}
 
     if not gateway.configured():
         async for ev in demo_answer(question, sources, specs, history):
@@ -428,13 +480,21 @@ async def _stream_impl(question: str, sources: list[dict], history: list[dict], 
                 f"{tools.summarise_for_model(name, result)[:1800]}\n"
                 "Answer using that result; do not invent different numbers.")})
 
+    started_at = time.monotonic()
+    patience = PATIENCE.get(decision.get("task", ""), PATIENCE_DEFAULT) if not model else PATIENCE_DEFAULT
     for round_no in range(MAX_ROUNDS + 1):
-        last_round = round_no == MAX_ROUNDS
+        spent = time.monotonic() - started_at
+        out_of_time = spent > TURN_BUDGET
+        last_round = round_no == MAX_ROUNDS or out_of_time
+        if out_of_time and round_no < MAX_ROUNDS:
+            yield {"type": "notice", "message": (
+                f"Answering with what the tools already returned — the free route was taking "
+                f"{spent:.0f}s.")}
         round_text = ""
         pending: list[dict] = []
         used_model = chosen
         try:
-            async for ev in _one_round(used_model, messages, schemas, last_round):
+            async for ev in _one_round(used_model, messages, schemas, last_round, patience):
                 if ev["type"] == "delta":
                     # cleaned once at the end: a markdown link split across two
                     # stream chunks would otherwise survive both halves
@@ -447,6 +507,11 @@ async def _stream_impl(question: str, sources: list[dict], history: list[dict], 
                     usage_in += ev.get("input_tokens", 0)
                     usage_out += ev.get("output_tokens", 0)
                 elif ev["type"] == "error":
+                    if ev.get("park") and float(ev["park"]) > 120:
+                        # the whole provider is out (a daily cap, not a busy minute):
+                        # switching models inside it would just burn another call
+                        yield ev
+                        return
                     if ev.get("retry") and fallbacks and not text_seen:
                         nxt = fallbacks.pop(0).split("/")[-1]
                         busy = "429" in str(ev.get("message", "")) or "503" in str(ev.get("message", ""))
@@ -509,15 +574,42 @@ async def _stream_impl(question: str, sources: list[dict], history: list[dict], 
 
 
 async def _one_round(model: str, messages: list[dict], schemas: list[dict],
-                     last_round: bool) -> AsyncIterator[dict]:
+                     last_round: bool, patience: float | None = None) -> AsyncIterator[dict]:
     if last_round:
         yield {"type": "delta", "text": ""}
     force_off = last_round or not schemas
+    # Some models (Nemotron on a free route is the usual offender) print the tool
+    # call as text instead of using the tool channel. Recover it here so the call
+    # actually runs and the markup never reaches the screen.
+    filt = ToolTextFilter({(s.get("function") or {}).get("name") for s in schemas} - {None})
+    made = 0
+
+    def _emit(call: dict, n: int) -> dict:
+        return {"type": "tool_call", "id": f"txt_{n}", "name": call["name"],
+                "arguments": call.get("arguments") or {}}
+
     async for ev in gateway.chat_stream(model, messages, tools=None if force_off else schemas,
-                                        max_tokens=config.MAX_TOKENS, temperature=None):
+                                        max_tokens=config.MAX_TOKENS, temperature=None,
+                                        first_token=patience):
+        if ev["type"] == "delta":
+            for kind, value in filt.feed(ev.get("text") or ""):
+                if kind == "text":
+                    if value:
+                        yield {"type": "delta", "text": value}
+                elif not force_off:
+                    made += 1
+                    yield _emit(value, made)
+            continue
         if ev["type"] == "tool_call" and force_off:
             continue
         yield ev
+    for kind, value in filt.flush():
+        if kind == "text":
+            if value:
+                yield {"type": "delta", "text": value}
+        elif not force_off:
+            made += 1
+            yield _emit(value, made)
 
 
 # ------------------------------------------------------------------ demo mode

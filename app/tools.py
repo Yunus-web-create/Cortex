@@ -290,7 +290,7 @@ async def run_web_search(cfg, query: str = "", max_results: int = 5, **_):
                 "search_depth": "basic", "include_answer": "true"})
             data = resp.json()
             results = [{"title": r.get("title", ""), "url": r.get("url", ""),
-                        "snippet": (r.get("content") or "")[:600]}
+                        "snippet": (r.get("content") or "")[:420]}
                        for r in (data.get("results") or [])][:n]
             out = {"provider": "tavily", "query": query, "results": results}
             if data.get("answer"):
@@ -301,7 +301,7 @@ async def run_web_search(cfg, query: str = "", max_results: int = 5, **_):
                           headers={"X-Subscription-Token": key, "Accept": "application/json"})
         data = resp.json()
         results = [{"title": r.get("title", ""), "url": r.get("url", ""),
-                    "snippet": _strip_html(r.get("description") or "")[:600]}
+                    "snippet": _strip_html(r.get("description") or "")[:420]}
                    for r in ((data.get("web") or {}).get("results") or [])][:n]
         return {"provider": "brave", "query": query, "results": results}
     except Exception as exc:
@@ -403,7 +403,10 @@ async def run_fetch_url(cfg, url: str = "", max_chars: int = 4000, **_):
         return {"url": str(resp.url), "status": resp.status_code,
                 "content_type": ctype.split(";")[0], "content": _clip(body, int(max_chars or 4000))}
     except Exception as exc:
-        return {"error": f"request failed: {type(exc).__name__}: {exc}"[:300]}
+        host = urlparse(url).hostname or url
+        return {"error": (f"could not reach {host} ({type(exc).__name__}: {str(exc)[:120]}). "
+                          "The site may be down or the address misspelled - use the search "
+                          "snippets instead of trying again.")[:300], "url": url}
 
 
 # ── specs ──────────────────────────────────────────────────────────────────
@@ -509,12 +512,17 @@ async def execute(name: str, args: dict, ctx: dict | None = None) -> dict:
 
 
 def summarise_for_model(name: str, result: dict) -> str:
-    """Compact JSON handed back to the model as the tool result."""
+    """Compact JSON handed back to the model as the tool result.
+
+    Kept deliberately small: every tool round re-sends the whole conversation, so
+    a 5k-char search blob costs its tokens again on each subsequent round.
+    """
     try:
         text = json.dumps(result, ensure_ascii=False, default=str)
     except Exception:
         text = str(result)
-    return _clip(text, 5000)
+    limit = 3500 if name in ("web_search", "deep_research") else 5000
+    return _clip(text, limit)
 
 
 def label_for(name: str) -> str:
@@ -590,7 +598,10 @@ async def run_generate_video(cfg, prompt: str = "", seconds: int = 5, narration:
 
 # ── research: read the web, not just search it ──────────────────────────────
 async def run_deep_research(cfg, question: str = "", depth: int = 3, **_):
-    data = await web.research(question, depth=max(1, min(int(depth or 3), 4)), n=6)
+    # a tool the model called explicitly can afford to read more pages than the
+    # automatic pre-fetch, but it still runs under one budget
+    data = await web.research(question, depth=max(1, min(int(depth or 3), 4)), n=6,
+                              budget=12.0)
     sources = web.to_sources(data["results"], data["pages"])
     return {
         "query": data["query"],

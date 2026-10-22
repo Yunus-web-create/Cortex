@@ -75,6 +75,9 @@ GROUNDING_MIN_OVERLAP = float(os.getenv("CORTEX_GROUNDING_OVERLAP", "0.42"))
 
 # ---- Tools -----------------------------------------------------------------
 TOOL_MAX_ROUNDS = int(os.getenv("CORTEX_TOOL_ROUNDS", "3"))
+# patience before switching models, and the wall-clock budget for a whole turn
+FIRST_TOKEN_TIMEOUT = float(os.getenv("CORTEX_FIRST_TOKEN_TIMEOUT", "20"))
+TURN_BUDGET = float(os.getenv("CORTEX_TURN_BUDGET", "75"))
 
 # ---- App -------------------------------------------------------------------
 MAX_UPLOAD_MB = int(os.getenv("CORTEX_MAX_UPLOAD_MB", "25"))

@@ -25,11 +25,13 @@ USER_AGENT = "Cortex/1.1 (+https://github.com/)"
 
 
 class ProviderError(RuntimeError):
-    def __init__(self, message: str, status: int = 0, retry: bool = False, kind: str = ""):
+    def __init__(self, message: str, status: int = 0, retry: bool = False, kind: str = "",
+                 park: float = 0.0):
         super().__init__(message)
         self.status = status
         self.retry = retry
         self.kind = kind            # e.g. "billing" - the key works, the account can't spend
+        self.park = park            # seconds the provider is known to be unusable for
 
 
 @dataclass
@@ -263,6 +265,12 @@ def pool() -> list[Provider]:
     return live or out[:1]
 
 
+def _openrouter_unspendable() -> bool:
+    """Read the cached credit flag without calling active_provider() (no recursion)."""
+    cached = db.get_kv("openrouter_credit", {}) or {}
+    return not bool(cached.get("spendable"))
+
+
 def active_provider() -> Provider | None:
     """First provider with a key, honouring CORTEX_PROVIDER and any pin."""
     pinned = _OVERRIDE.get()
@@ -277,6 +285,14 @@ def active_provider() -> Provider | None:
             return Provider(name="custom", base_url=base.rstrip("/"), api_key=key)
     order += [p for p in ("gateway", "openrouter", "openai", "groq", "deepseek", "together",
                           "google", "ollama") if p not in order]
+    # A $0 OpenRouter key can only use :free models, and that tier is 50 requests a
+    # day. Google's free tier is an order of magnitude larger and answers faster, so
+    # when neither is chosen explicitly, lead with Google instead of burning the
+    # first call of every turn on a quota that is probably spent.
+    if not forced and "openrouter" in order and "google" in order and _openrouter_unspendable() \
+            and _key_for("google"):
+        order.remove("google")
+        order.insert(order.index("openrouter"), "google")
     block = (db.get_kv("provider_block", {}) or {}).get("kind")
     for name in order:
         key = _key_for(name)
@@ -375,6 +391,31 @@ BILLING_HINT = (
 )
 
 
+def _park_seconds(resp: httpx.Response) -> float:
+    """How long a 429 says to stay away. OpenRouter's daily cap is hours, not a minute."""
+    if resp.status_code != 429:
+        return 0.0
+    h = resp.headers
+    for key in ("retry-after", "x-ratelimit-reset-after"):
+        try:
+            val = float(str(h.get(key, "")).strip())
+            if 5 < val < 48 * 3600:
+                return val
+        except (TypeError, ValueError):
+            pass
+    for key in ("x-ratelimit-reset", "ratelimit-reset"):
+        try:
+            val = float(str(h.get(key, "")).strip())
+            if val > 1e12:                 # milliseconds
+                val /= 1000.0
+            delta = val - time.time()
+            if 5 < delta < 48 * 3600:
+                return delta
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
 async def _error(resp: httpx.Response) -> ProviderError:
     try:
         body = resp.json()
@@ -397,10 +438,17 @@ async def _error(resp: httpx.Response) -> ProviderError:
     quota = resp.status_code == 429 or "quota" in low or "rate limit" in low
     retry = resp.status_code in (429, 500, 502, 503, 504)
     kind = "quota" if quota else ""
+    park = _park_seconds(resp)
     short = re.sub(r"\s+", " ", msg).split(" For more information")[0]
     short = short.split(" head to:")[0].strip()[:180]
-    hint = " (free-tier quota — it resets within a minute)" if quota and resp.status_code == 429 else ""
-    return ProviderError(f"{resp.status_code}: {short}{hint}", resp.status_code, retry, kind=kind)
+    if quota and resp.status_code == 429:
+        hint = (f" (free quota resets in {park / 3600:.0f}h)" if park > 3600
+                else f" (free quota resets in {park / 60:.0f} min)" if park > 90
+                else " (free-tier quota — it resets within a minute)")
+    else:
+        hint = ""
+    return ProviderError(f"{resp.status_code}: {short}{hint}", resp.status_code, retry, kind=kind,
+                         park=park)
 
 
 # --------------------------------------------------------------- catalogue
@@ -572,11 +620,17 @@ def _free_lock() -> asyncio.Semaphore:
 
 async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | None = None,
                       temperature: float | None = None, max_tokens: int = 2000,
-                      reasoning: str | None = None, timeout: float = 180) -> AsyncIterator[dict]:
+                      reasoning: str | None = None, timeout: float = 180,
+                      first_token: float | None = None) -> AsyncIterator[dict]:
     """Yield {'type': 'delta'|'tool_call'|'usage'|'error'} events.
 
     tool_call events arrive whole (id, name, arguments dict) once the stream
     finishes assembling the deltas.
+
+    `first_token` is the patience budget: a free endpoint can sit in a queue for
+    minutes without a byte, which is what makes a turn feel broken. If no content
+    arrives in that window the stream is abandoned with a retryable error so the
+    caller can move to another model instead of staring at a spinner.
     """
     p = active_provider()
     if not p:
@@ -619,9 +673,27 @@ async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | N
     calls: dict[int, dict] = {}
     usage: dict = {}
 
+    started = False
+
     async def _consume(r) -> AsyncIterator[dict]:
-        nonlocal usage
-        async for line in r.aiter_lines():
+        nonlocal usage, started
+        it = r.aiter_lines().__aiter__()
+        deadline = (time.monotonic() + first_token) if first_token else None
+        while True:
+            try:
+                if deadline is not None and not started:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise asyncio.TimeoutError
+                    line = await asyncio.wait_for(it.__anext__(), timeout=left)
+                else:
+                    line = await it.__anext__()
+            except StopAsyncIteration:
+                return
+            except asyncio.TimeoutError:
+                raise ProviderError(
+                    f"{model.split('/')[-1]} did not start answering within {first_token:.0f}s",
+                    0, True, kind="slow")
             if not line or not line.startswith("data:"):
                 continue
             chunk = line[5:].strip()
@@ -636,6 +708,7 @@ async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | N
             for ch in obj.get("choices") or []:
                 delta = ch.get("delta") or {}
                 if delta.get("content"):
+                    started = True
                     clear_model_down(model)
                     block = db.get_kv("provider_block", {}) or {}
                     if block.get("kind") and block.get("provider") == p.name:
@@ -646,6 +719,7 @@ async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | N
                     if url:
                         yield {"type": "image", "url": url}
                 for tc in delta.get("tool_calls") or []:
+                    started = True
                     idx = tc.get("index", 0)
                     slot = calls.setdefault(idx, {"id": "", "name": "", "arguments": "",
                                                   "extra": None})
@@ -688,7 +762,9 @@ async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | N
                         async for ev in _consume(r):
                             yield ev
         except ProviderError as exc:
-            if exc.status == 429:
+            if getattr(exc, "kind", "") == "slow":
+                mark_model_down(model, 900)       # queued or overloaded: sit it out
+            elif exc.status == 429:
                 mark_model_down(model, 3600)      # quota resets hourly on most free tiers
             elif exc.status in (500, 502, 503, 504) and attempt >= attempts - 1:
                 mark_model_down(model, 600)       # genuinely overloaded
@@ -697,7 +773,8 @@ async def chat_stream(model: str, messages: list[dict], *, tools: list[dict] | N
             hint = ""
             if exc.status in (401, 403) and getattr(exc, "kind", "") != "billing":
                 hint = " Check the key in Settings → Model access."
-            yield {"type": "error", "message": str(exc) + hint, "retry": exc.retry}
+            yield {"type": "error", "message": str(exc) + hint, "retry": exc.retry,
+                   "park": getattr(exc, "park", 0.0)}
             return
         except httpx.TimeoutException:
             yield {"type": "error", "message": "The model took too long to respond. Try again or pick a faster model.", "retry": True}

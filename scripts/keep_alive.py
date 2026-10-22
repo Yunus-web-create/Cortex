@@ -84,6 +84,10 @@ def pid_alive() -> bool:
 
 
 def start_tunnel() -> subprocess.Popen:
+    try:
+        os.chmod(BIN, 0o755)          # a restored snapshot can drop the exec bit
+    except OSError:
+        pass
     logfile = RUN / "tunnel.log"
     logfile.write_text("")                       # a fresh file, so the URL is unambiguous
     proc = subprocess.Popen(
@@ -118,8 +122,11 @@ def main() -> int:
     failures = 0
     while True:
         url = current_url()
+        if not pid_alive():
+            failures = 2                  # the process is gone: no need for a second opinion
+        elif not alive(url):
+            failures += 1                 # process alive, edge dead — the 1033 case
         if not pid_alive() or not alive(url):
-            failures += 1
             if failures >= 2 or not url:
                 log(f"tunnel unhealthy (url={url or 'none'}) — restarting")
                 stop_tunnel()

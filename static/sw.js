@@ -1,7 +1,7 @@
 /* Cortex service worker — makes the app installable and usable on a flaky phone
    connection. It caches the *shell* only: never API responses, never media, never
    a streamed answer, so the app can never show you stale data. */
-const VERSION = "cortex-v1";
+const VERSION = "cortex-v2";
 const SHELL = [
   "/",
   "/static/app.js",

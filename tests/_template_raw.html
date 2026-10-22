@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex — offline demo</title>
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#fff; --panel-2:#fbfaf7; --panel-3:#f2f0ec;
+  --ink:#1b1a18; --ink-2:#3f3c38; --muted:#726d66; --faint:#9b958d;
+  --line:#e7e3dc; --line-strong:#d8d2c9;
+  --accent:#5a48e0; --accent-2:#7c6cff; --accent-soft:#efecfe; --accent-line:#ded8fd;
+  --ok:#0f7a5f; --ok-soft:#e6f5f0; --devel:#a55a09; --warn-soft:#fdf1e0;
+  --shadow-md:0 1px 3px rgba(28,24,18,.06),0 10px 26px -14px rgba(28,24,18,.22);
+  --shadow-lg:0 2px 6px rgba(28,24,18,.06),0 24px 60px -22px rgba(28,24,18,.30);
+  --font:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+[data-theme=dark]{
+  --bg:#121211; --panel:#1a1917; --panel-2:#1f1e1b; --panel-3:#262420;
+  --ink:#efece6; --ink-2:#d4cfc6; --muted:#a49e94; --faint:#847e74;
+  --line:#2d2b27; --line-strong:#3b3833;
+  --accent:#9a8bff; --accent-2:#b3a7ff; --accent-soft:#241f3f; --accent-line:#38305f;
+  --ok:#4ed3a8; --ok-soft:#16302a; --devel:#f0b264; --warn-soft:#332614;
+}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+header{display:flex;align-items:center;gap:11px;padding:14px 20px;border-bottom:1px solid var(--line);flex:none}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(160deg,var(--accent-2),var(--accent));
+  display:grid;place-items:center;box-shadow:0 5px 14px -6px rgba(90,72,224,.7)}
+.logo svg{stroke:#fff;width:17px;height:17px}
+.brand{line-height:1.15}
+.brand strong{font-size:15.5px;letter-spacing:-.02em;display:block}
+.brand span{font-size:10.5px;color:var(--muted)}
+.spacer{flex:1}
+.pill{font-size:10.5px;font-weight:650;padding:3px 9px;border-radius:99px;background:var(--warn-soft);
+  color:var(--devel);border:1px solid color-mix(in srgb,var(--devel) 26%,transparent);white-space:nowrap}
+.iconbtn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{color:var(--ink);border-color:var(--line-strong)}
+main{flex:1;overflow-y:auto;padding:22px 20px 8px}
+.wrap{max-width:760px;margin:0 auto}
+.hero{text-align:center;padding:26px 0 8px}
+.orb{width:56px;height:56px;border-radius:18px;margin:0 auto 18px;background:conic-gradient(from 210deg,var(--accent),#33c6b0,#f0a23c,var(--accent));
+  box-shadow:0 16px 40px -16px rgba(90,72,224,.7);position:relative}
+.orb::after{content:"";position:absolute;inset:31%;border-radius:50%;background:var(--bg)}
+.eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);font-weight:640;margin:0 0 9px}
+h1{font-size:clamp(24px,3.4vw,31px);letter-spacing:-.035em;margin:0 0 9px;font-weight:660;line-height:1.13}
+.sub{color:var(--muted);font-size:14px;line-height:1.6;max-width:430px;margin:0 auto}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:26px;text-align:left}
+.card{text-align:left;cursor:pointer;padding:13px 15px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);font-size:13.2px;line-height:1.45;color:var(--ink-2);transition:.15s;
+  box-shadow:0 1px 2px rgba(28,24,18,.05);font-family:inherit}
+.card:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent);transform:translateY(-1px)}
+.card span{display:block;font-size:10px;color:var(--faint);margin-top:5px}
+.card:hover span{color:var(--accent)}
+.msg{display:flex;gap:11px;margin-bottom:24px}
+.av{width:28px;height:28px;border-radius:9px;flex:none;display:grid;place-items:center;font-size:10.5px;
+  font-weight:700;background:var(--panel-3);color:var(--muted);border:1px solid var(--line);margin-top:2px}
+.msg.bot .av{background:linear-gradient(160deg,var(--accent-2),var(--accent));border:0}
+.msg.bot .av svg{stroke:#fff;width:15px;height:15px}
+.body{min-width:0;flex:1}
+.who{font-size:11.8px;font-weight:650;margin-bottom:5px}
+.msg.user .body{background:#f1eefb;border:1px solid var(--accent-line);padding:11px 15px;border-radius:14px 14px 14px 4px;font-size:14.2px;line-height:1.55}
+[data-theme=dark] .msg.user .body{background:#242136}
+.content{font-size:14.4px;line-height:1.68}
+.content p{margin:0 0 10px}
+.content ul{margin:0 0 11px;padding-left:21px}
+.content li{margin:5px 0}
+.content strong{font-weight:640}
+.cite{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;margin:0 1px;
+  vertical-align:1px;border-radius:5px;cursor:pointer;font-size:10.5px;font-weight:700;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);font-family:var(--font)}
+.cite:hover{background:var(--accent);color:#fff}
+.srcwrap{margin-top:11px}
+.srchead{display:inline-flex;align-items:center;gap:6px;font-size:11.8px;font-weight:600;color:var(--muted);
+  background:none;border:0;cursor:pointer;padding:4px 0;font-family:inherit}
+.srchead:hover{color:var(--accent)}
+.srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.4px;padding:4px 9px 4px 6px;border-radius:8px;
+  cursor:pointer;background:var(--panel-2);border:1px solid var(--line);color:var(--ink-2);font-family:inherit}
+.chip:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent)}
+.chip .n{font-weight:700;font-size:9.5px;width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent)}
+.chip .pg{color:var(--faint)}
+.meta{display:flex;gap:8px;align-items:center;margin-top:9px;font-size:10.8px;color:var(--faint)}
+.ground{display:inline-flex;align-items:center;gap:5px;font-size:10.8px;font-weight:560;padding:3px 8px;
+  border-radius:99px;background:var(--ok-soft);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 26%,transparent)}
+footer{flex:none;padding:8px 20px 14px}
+.composer{max-width:760px;margin:0 auto;background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:16px;padding:11px 11px 8px 15px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:8px}
+.composer:focus-within{border-color:color-mix(in srgb,var(--accent) 45%,var(--line-strong));
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 11%,transparent),var(--shadow-md)}
+textarea{width:100%;border:0;outline:0;resize:none;background:transparent;color:var(--ink);font:inherit;
+  font-size:14.6px;line-height:1.55;max-height:140px;padding:2px 0 4px}
+textarea::placeholder{color:var(--faint)}
+.bar{display:flex;align-items:center;justify-content:space-between}
+.hint{font-size:10.8px;color:var(--faint)}
+.send{width:36px;height:36px;border-radius:11px;border:0;background:var(--accent);color:#fff;
+  display:grid;place-items:center;cursor:pointer}
+.send:disabled{opacity:.35;cursor:not-allowed}
+.send svg{width:17px;height:17px;stroke-width:2.2}
+.foot{max-width:760px;margin:7px auto 0;text-align:center;font-size:10.4px;color:var(--faint)}
+.pop{position:fixed;z-index:60;width:min(430px,calc(100vw - 28px));background:var(--panel);
+  border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow-lg);padding:12px 14px 13px}
+.pop h4{margin:0 0 2px;font-size:12.8px;letter-spacing:-.01em}
+.pop .pm{font-size:10.8px;color:var(--faint);display:flex;gap:7px;flex-wrap:wrap}
+.pop .pb{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:12.4px;line-height:1.6;
+  color:var(--ink-2);max-height:230px;overflow-y:auto;white-space:pre-wrap}
+.pop .pb mark{background:color-mix(in srgb,var(--accent) 20%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.x{position:absolute;top:9px;right:9px;width:24px;height:24px;border:0;background:none;color:var(--faint);
+  cursor:pointer;border-radius:6px;display:grid;place-items:center}
+.x:hover{background:var(--panel-3);color:var(--ink)}
+.hidden{display:none!important}
+@media(max-width:680px){.grid{grid-template-columns:1fr}main{padding:16px 13px 6px}footer{padding:6px 12px 12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 64 64"><path d="M32 14a18 18 0 1 0 12.7 5.3"/><circle cx="32" cy="32" r="5"/></svg></div>
+  <div class="brand"><strong>Cortex</strong><span>offline demo · BM25 retrieval in your browser</span></div>
+  <div class="spacer"></div>
+  <span class="pill">static demo</span>
+  <button class="iconbtn" id="theme" title="Toggle theme">
+    <svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+</header>
+
+<main id="scroller">
+  <div class="wrap" id="thread">
+    <div class="hero" id="hero">
+      <div class="orb"></div>
+      <p class="eyebrow">retrieval · citations · grounding</p>
+      <h1>Ask these documents anything.</h1>
+      <p class="sub">__CHUNKS__ passages from 5 documents, searched locally in your browser.
+        Every answer is extracted from the passages it cites.</p>
+      <p class="sub" style="margin-top:10px;font-size:12px;opacity:.75">
+        This page is offline and shows the document layer only. The full app routes each
+        task to a different model, searches the live web, calls APIs mid-answer (weather,
+        search, Wikipedia, a calculator, the clock, any URL), writes and runs code in a
+        workspace, and generates images, speech and video.
+      </p>
+      <div class="grid" id="starters"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Ask about leave, pricing, support, retention…"></textarea>
+    <div class="bar">
+      <span class="hint">Enter to ask · runs fully offline</span>
+      <button class="send" id="send" aria-label="Send">
+        <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="foot">Static demo: no model calls and no network. The full app adds Claude and live API tools.</div>
+</footer>
+
+<div class="pop hidden" id="pop">
+  <button class="x" id="popx"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <h4 id="popt"></h4>
+  <div class="pm" id="popm"></div>
+  <div class="pb" id="popb"></div>
+</div>
+
+<script>
+const CHUNKS = __DATA__;
+const SUGGESTED = __SUGGESTED__;
+
+/* ---------- BM25 ---------- */
+const STOP = new Set("a an and are as at be been being but by can could did do does doing for from had has have having he her here hers him his how i if in into is it its itself just me more most my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your many much any also still just get got please tell".split(" "));
+const stem = t => t.length>5&&t.endsWith("ing")?t.slice(0,-3):
+  t.length>5&&t.endsWith("ied")?t.slice(0,-3)+"y":
+  t.length>4&&t.endsWith("ies")?t.slice(0,-3)+"y":
+  t.length>4&&t.endsWith("es")&&!t.endsWith("ses")?t.slice(0,-2):
+  t.length>3&&t.endsWith("s")&&!t.endsWith("ss")?t.slice(0,-1):t;
+const tok = s => (s.toLowerCase().match(/[a-z0-9][a-z0-9'\-]*/g)||[])
+  .map(x=>x.replace(/^['-]+|['-]+$/g,"")).filter(x=>x.length>1&&!STOP.has(x)).map(stem);
+
+const DOCS = CHUNKS.map(c => ({
+  ...c,
+  toks: tok(c.t + " " + c.d + " " + c.h),
+  raw: (" " + c.t + " " + c.d + " " + c.h + " ").toLowerCase().replace(/[ \t\n\r]+/g, " ")
+}));
+// plain (unstemmed) words for phrase matching
+const words = s => (s.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) || []).filter(w => w.length > 2);
+const N = DOCS.length;
+const avgdl = DOCS.reduce((a,d)=>a+d.toks.length,0)/N;
+const df = {};
+DOCS.forEach(d => new Set(d.toks).forEach(t => df[t]=(df[t]||0)+1));
+const idf = t => Math.log(1 + (N-(df[t]||0)+0.5)/((df[t]||0)+0.5));
+
+function bm25(qt, phraseBonus){
+  const k1=1.5,b=0.75;
+  return DOCS.map(d=>{
+    const tf={}; d.toks.forEach(t=>tf[t]=(tf[t]||0)+1);
+    let s=0;
+    for(const t of new Set(qt)){
+      const f=tf[t]; if(!f) continue;
+      s += idf(t) * (f*(k1+1))/(f + k1*(1-b+b*d.toks.length/avgdl));
+    }
+    s = s / Math.max(1, Math.sqrt(new Set(qt).size));
+    return s + (phraseBonus ? phraseBonus(d) : 0);
+  });
+}
+
+// adjacent query-word pairs appearing verbatim ("annual leave", "carry over")
+function phraseMatcher(q){
+  const w = words(q);
+  const pairs = [];
+  for(let i=0;i<w.length-1;i++) pairs.push(w[i]+" "+w[i+1]);
+  if(!pairs.length) return null;
+  return d => pairs.reduce((a,p)=> a + (d.raw.includes(" "+p+" ") ? 1 : 0), 0) * 1.8;
+}
+
+function search(q){
+  const qt = tok(q);
+  const scores = bm25(qt, phraseMatcher(q));
+  const idx = scores.map((s,i)=>({s,i})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,6);
+  return idx.map(({s,i},rank)=>({...DOCS[i], score:s, rank, idx:i}));
+}
+
+function qtSize(q){ return Math.max(1, new Set(tok(q)).size); }
+
+// terms the corpus has never seen ("ceo", "berlin") mean we cannot answer
+function unknownTerms(q){
+  return [...new Set(tok(q))].filter(t => !(df[t] > 0) && t.length > 2);
+}
+
+/* ---------- answer ---------- */
+const sentences = t => t.split(/\n\s*\n/).flatMap(p=>p.replace(/\s+/g," ").split(/(?<=[.!?])\s+/))
+  .map(s=>s.trim()).filter(s=>s.length>30);
+
+function answer(q, hits){
+  const qt = new Set(tok(q));
+  const picked = [];
+  const seen = new Set();
+  hits.slice(0,3).forEach((h,i)=>{
+    let body = h.t;
+    if (h.h && body.startsWith(h.h)) body = body.slice(h.h.length).replace(/^\n+/,"");
+    let taken=0;
+    for(const s of sentences(body)){
+      const key = s.slice(0,60).toLowerCase();
+      if(seen.has(key) || s.includes("| ---")) continue;
+      const ts = new Set(tok(s));
+      let shared=0; qt.forEach(t=>{ if(ts.has(t)) shared++; });
+      if(!shared) continue;
+      seen.add(key);
+      picked.push({ txt: s.replace(/\*\*/g,""), n: i+1, sc: shared/Math.sqrt(qt.size||1) });
+      if(++taken>=2) break;
+    }
+  });
+  picked.sort((a,b)=>b.sc-a.sc);
+  const best = picked.length? picked[0].sc : 0;
+  const keep = picked.filter(p=>p.sc >= best*0.5).slice(0,4);
+  keep.sort((a,b)=>a.n-b.n);
+  return keep;
+}
+
+function verified(sent, hits){
+  const c = (sent.match(/\[(\d)\]/g)||[]).map(x=>+x[1]);
+  if(!c.length) return false;
+  const probe = tok(sent.replace(/\[\d\]/g," "));
+  const src = new Set(tok(hits[(c[0]||1)-1]?.t||""));
+  if(!probe.length) return false;
+  let shared=0; probe.forEach(t=>{ if(src.has(t)) shared++; });
+  return shared/probe.length >= 0.42;
+}
+
+/* ---------- render ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const thread = $("#thread"), scroller = $("#scroller");
+let busy = false;
+
+function markdown(t){
+  const inline = s => esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[(\d)\]/g, '<button class="cite" data-n="$1">$1</button>');
+
+  const out = [];
+  let list = null;
+  for (const raw of t.split("\n")) {
+    const line = raw.trim();
+    if (!line) { if (list) { out.push(list); list = null; } continue; }
+    if (line.startsWith("- ")) {
+      if (!list) list = ["<ul>"];
+      list.push("<li>" + inline(line.slice(2)) + "</li>");
+    } else {
+      if (list) { out.push(list); list = null; }
+      out.push("<p>" + inline(line) + "</p>");
+    }
+  }
+  if (list) out.push(list);
+  return out.map(x => Array.isArray(x) ? x.join("") + "</ul>" : x).join("");
+}
+
+function addUser(text){
+  const el = document.createElement("div");
+  el.className = "msg user";
+  el.innerHTML = `<div class="av">You</div><div class="body">${esc(text)}</div>`;
+  thread.appendChild(el);
+}
+
+function addBot(text, hits){
+  const el = document.createElement("div");
+  el.className = "msg bot";
+  const chips = hits.map((h,i)=>`<button class="chip" data-i="${i}">
+      <span class="n">${i+1}</span><span>${esc(h.d)}</span>
+      ${h.d.endsWith(".pdf")?`<span class="pg">p.${h.p}</span>`:""}</button>`).join("");
+  const grounded = hits.length
+    ? text.split(/(?<=[.!?])\s+(?!\[)|\n+/).filter(s=>/\[\d\]/.test(s)).map(s=>verified(s,hits))
+    : [];
+  const okCount = grounded.filter(Boolean).length;
+  el.innerHTML = `
+    <div class="av"><svg viewBox="0 0 64 64"><path d="M32 14a18 18 0 1 0 12.7 5.3"/><circle cx="32" cy="32" r="5"/></svg></div>
+    <div class="body">
+      <div class="who">Cortex</div>
+      <div class="content">${markdown(text)}</div>
+      <div class="srcwrap">
+        <button class="srchead" id="toggle">${hits.length} source${hits.length>1?"s":""}</button>
+        <div class="srcs">${chips}</div>
+      </div>
+      <div class="meta">
+        ${grounded.length?`<span class="ground"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>${okCount}/${grounded.length} claims grounded</span>`:""}
+        <span>${hits.length} passages</span><span>·</span><span>0.4s</span>
+      </div>
+    </div>`;
+  thread.appendChild(el);
+  el.querySelector("#toggle").onclick = () => {
+    const s = el.querySelector(".srcs");
+    s.classList.toggle("hidden");
+  };
+  el.querySelectorAll(".chip").forEach(c => c.onclick = ev => openPop(hits[+c.dataset.i], ev));
+  el.querySelectorAll(".cite").forEach(c => c.onclick = ev => openPop(hits[+c.dataset.n-1], ev));
+  return el;
+}
+
+function openPop(h, ev){
+  if(!h) return;
+  $("#popt").textContent = h.d;
+  $("#popm").innerHTML = [h.d.endsWith(".pdf")?`page ${h.p}`:"", esc((h.h||"").split("›").slice(-2).join(" › "))]
+    .filter(Boolean).map(x=>`<span>${x}</span>`).join("<span>·</span>");
+  $("#popb").innerHTML = esc(h.t);
+  const pop = $("#pop");
+  pop.classList.remove("hidden");
+  const r = ev.currentTarget.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+  let left = Math.max(12, Math.min(innerWidth - pr.width - 12, r.left + r.width/2 - pr.width/2));
+  let top = r.bottom + 8;
+  if(top + pr.height > innerHeight - 12) top = Math.max(12, r.top - pr.height - 8);
+  pop.style.left = left+"px"; pop.style.top = top+"px";
+}
+$("#popx").onclick = () => $("#pop").classList.add("hidden");
+document.addEventListener("click", e => {
+  if(!e.target.closest("#pop") && !e.target.closest(".chip") && !e.target.closest(".cite"))
+    $("#pop").classList.add("hidden");
+});
+
+function ask(q){
+  if(busy || !q.trim()) return;
+  busy = true; $("#send").disabled = true;
+  $("#hero")?.remove();
+  addUser(q);
+  const unknown = unknownTerms(q);
+  const hits = search(q);
+  const scroll = () => scroller.scrollTo({top: scroller.scrollHeight, behavior:"smooth"});
+  scroll();
+  setTimeout(()=>{
+    if(!hits.length || (unknown.length && (unknown.length >= qtSize(q) * 0.4 || qtSize(q) <= 4))){
+      const topic = unknown.length ? `“${unknown.slice(0,3).join("”, “")}”` : "that";
+      addBot(`I couldn't find anything about ${topic} in these five documents. ` +
+             "Try asking about leave, pricing, support targets or data retention — those are what this demo corpus covers.", []);
+    } else {
+      const keeps = answer(q, hits);
+      const text = keeps.length
+        ? "Here's what your documents say:\n\n" + keeps.map(k=>`- ${k.txt} [${k.n}]`).join("\n")
+        : "I found related passages but couldn't isolate a clean answer. The nearest sources are below.";
+      addBot(text, hits);
+    }
+    busy = false; $("#send").disabled = false;
+    scroll();
+  }, 340);
+}
+
+$("#starters").innerHTML = SUGGESTED.map(q=>`<button class="card">${esc(q)}<span>grounded &amp; cited</span></button>`).join("");
+$("#starters").onclick = e => { const b = e.target.closest(".card"); if(b) ask(b.firstChild.textContent.trim()); };
+$("#send").onclick = () => { ask($("#input").value); $("#input").value=""; $("#input").style.height="auto"; };
+$("#input").addEventListener("keydown", e => {
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); ask($("#input").value); $("#input").value=""; $("#input").style.height="auto"; }
+});
+$("#input").addEventListener("input", e => {
+  e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,140)+"px";
+});
+$("#theme").onclick = () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+};
+$("#input").focus();
+</script>
+</body>
+</html>

@@ -73,7 +73,8 @@ class FakeGateway:
         self.rounds = rounds
         self.calls = []
 
-    async def chat_stream(self, model, messages, tools=None, max_tokens=None, temperature=None):
+    async def chat_stream(self, model, messages, tools=None, max_tokens=None, temperature=None,
+                          first_token=None):
         self.calls.append({"model": model, "messages": [dict(m) for m in messages],
                            "tools": tools, "max_tokens": max_tokens})
         script = self.rounds[len(self.calls) - 1]
@@ -162,6 +163,42 @@ check("hallucinated tool returns an error result",
       bool(tr) and tr[0]["ok"] is False and "not enabled" in json.dumps(tr[0]).lower(),
       json.dumps(tr[0]) if tr else "")
 check("model is told, not crashed", "error" in calls[1]["messages"][-1]["content"].lower())
+
+print("\n\033[1mtool call written as text (what Nemotron does)\033[0m")
+# The model prints the call into the answer instead of using the tool channel.
+# It must still run, and none of the markup may reach the user.
+events, calls = run_loop([
+    [say("Let me check that site.\n\n<tool_call>\n<function=calculator>\n"),
+     say("<parameter=expression>"), say("18/100*4750</parameter>\n</function>\n</tool_call>\n")],
+    [say("18% of 4 750 is **855**.")],
+])
+answer = "".join(e.get("text", "") for e in events if e["type"] == "delta")
+check("the text-emitted call actually ran",
+      any(e["type"] == "tool_result" and e["result"].get("result") == 855 for e in events),
+      str(events)[:300])
+check("no <tool_call> markup reaches the user",
+      "<tool_call>" not in answer and "<parameter" not in answer, answer)
+check("the prose around the call is kept", "Let me check that site" in answer, answer)
+check("the final answer still arrives", "855" in answer, answer)
+replay = calls[1]["messages"][-2]
+check("the recovered call is replayed as a real tool_call",
+      bool(replay.get("tool_calls")) and replay["tool_calls"][0]["function"]["name"] == "calculator",
+      str(replay)[:250])
+check("the markup is not replayed as assistant text",
+      "<tool_call>" not in (replay.get("content") or ""), str(replay.get("content"))[:120])
+check("the tool message is attached", calls[1]["messages"][-1]["role"] == "tool")
+
+print("\n\033[1mmarkup-only reply still produces an answer\033[0m")
+events, _ = run_loop([
+    [say("<tool_call><function=calculator><parameter=expression>2+2</parameter>"
+         "</function></tool_call>")],
+    [say("")],
+])
+answer = "".join(e.get("text", "") for e in events if e["type"] == "delta")
+final = [e["text"] for e in events if e["type"] == "text_replace"]
+answer = final[-1] if final else answer      # the UI swaps in text_replace verbatim
+check("the user is never shown raw markup", "<tool_call>" not in answer, answer)
+check("a usable answer comes from the tool result", "4" in answer, repr(answer))
 
 print(f"\n\033[1m{PASS} passed, {FAIL} failed{OFF}\n")
 sys.exit(1 if FAIL else 0)

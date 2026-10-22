@@ -418,33 +418,58 @@ def fresh_query(q: str) -> str:
     return q
 
 
-async def research(question: str, *, depth: int = 3, n: int = 6) -> dict:
-    """Search, then read the top pages. Returns {results, pages, provider}."""
+async def research(question: str, *, depth: int = 3, n: int = 6,
+                   budget: float = 7.0) -> dict:
+    """Search, then read the top pages **concurrently**, under a time budget.
+
+    Reading pages one after another made every factual turn wait 15-25 seconds
+    before the model saw anything, which is the difference between a chat window
+    and a queue. They are independent requests, so they run together and whatever
+    has not arrived by `budget` is abandoned: the search snippets alone are
+    usually enough to answer, and the model can still open a page itself.
+    """
     q = fresh_query(_query_from(question))
     hits = relevance(await search(q, n), question)
     if not hits:
         hits = relevance(await search(question[:120], n), question)
-    pages = []
-    tried = 0
-    for hit in hits:
-        if len(pages) >= depth or tried >= depth * 3:
-            break
+    if not hits:
+        return {"query": q, "results": [], "pages": [], "provider": provider_name()}
+
+    async def read(hit: dict):
         url = hit.get("url") or ""
         if not url:
-            continue
-        tried += 1
-        page = await fetch(url)
-        text = page.get("text") or ""
+            return None
+        try:
+            page = await asyncio.wait_for(fetch(url), timeout=budget)
+        except Exception:
+            page = {}
+        text = (page or {}).get("text") or ""
         if len(text) < 400:
-            # paywall, JS shell or PDF: keep the search snippet so the source still has substance
+            # paywall, JS shell or PDF: keep the search snippet so the source still
+            # has substance instead of arriving as an empty page
             snippet = hit.get("snippet") or ""
-            if len(snippet) > 120:
-                page = {**page, "text": snippet, "from_snippet": True}
-                text = snippet
-            else:
-                continue
+            if len(snippet) <= 120:
+                return None
+            page = {**(page or {}), "text": snippet, "from_snippet": True}
         page["snippet"] = hit.get("snippet", "")
-        pages.append(page)
+        return page
+
+    candidates = hits[: max(depth * 3, depth)]
+    tasks = [asyncio.create_task(read(h)) for h in candidates]
+    done, pending = await asyncio.wait(tasks, timeout=budget + 1.0)
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)   # quiet teardown
+    pages = []
+    for task in tasks:
+        if task not in done or task.cancelled() or task.exception():
+            continue
+        page = task.result()
+        if page:
+            pages.append(page)
+        if len(pages) >= depth:
+            break
     return {"query": q, "results": hits, "pages": pages, "provider": provider_name()}
 
 
